@@ -2,9 +2,15 @@ import { Router } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import PuntoOtorgadoService from '../services/PuntoOtorgadoService.js';
 import PuntoOtorgado from '../entities/PuntoOtorgado.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 const currentService = new PuntoOtorgadoService();
+
+// Catalogo (tipos de puntos otorgados). No hay un sistema de roles de admin
+// en el backend todavia, asi que el minimo real es exigir login para
+// escribir — bloquea la manipulacion anonima del catalogo desde internet.
+// La lectura queda publica porque se usa para popular selects en el front.
 
 router.get('', async (req, res) => {
   try {
@@ -26,7 +32,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('', async (req, res) => {
+router.post('', authMiddleware, async (req, res) => {
   try {
     const entity = new PuntoOtorgado(req.body);
     const newId = await currentService.createAsync(entity);
@@ -37,7 +43,7 @@ router.post('', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const entity = new PuntoOtorgado(req.body);
@@ -50,7 +56,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const rowCount = await currentService.deleteByIdAsync(id);

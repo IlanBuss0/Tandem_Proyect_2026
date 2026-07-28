@@ -3,6 +3,7 @@ import { StatusCodes } from 'http-status-codes';
 
 import FavoritoActividadService from '../services/FavoritoActividadService.js';
 import FavoritoActividad from '../entities/FavoritoActividad.js';
+import AuthorizationService from '../services/AuthorizationService.js';
 
 const router = Router();
 const currentService = new FavoritoActividadService();
@@ -42,6 +43,9 @@ router.post('', async (req, res) => {
   try {
     console.log('FavoritoActividadController.create');
     const entity = new FavoritoActividad(req.body);
+    await AuthorizationService.assertCanWritePertenecienteResource(req.user.id, entity.id_perteneciente, {
+      allowTutor: true,
+    });
     const newId = await currentService.createAsync(entity);
     if (newId > 0) {
       res.status(StatusCodes.CREATED).json({
@@ -55,7 +59,7 @@ router.post('', async (req, res) => {
     }
   } catch (error) {
     console.log(error);
-    res.status(StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);
+    res.status(error?.statusCode ?? StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);
   }
 });
 
@@ -68,7 +72,13 @@ router.put('/:id', async (req, res) => {
       return res.status(StatusCodes.BAD_REQUEST)
         .send(`El id de la URL (${id}) no coincide con el id del body (${entity.id}).`);
     }
+    const previous = await currentService.getByIdAsync(id);
+    if (previous == null) return res.status(StatusCodes.NOT_FOUND).send(`No se encontro el favorito con id: ${id}.`);
+    await AuthorizationService.assertCanWritePertenecienteResource(req.user.id, previous.id_perteneciente, {
+      allowTutor: true,
+    });
     entity.id = id;
+    entity.id_perteneciente = previous.id_perteneciente;
     const rowsAffected = await currentService.updateAsync(entity);
     if (rowsAffected !== 0) {
       res.status(StatusCodes.OK).json({
@@ -80,7 +90,7 @@ router.put('/:id', async (req, res) => {
     }
   } catch (error) {
     console.log(error);
-    res.status(StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);
+    res.status(error?.statusCode ?? StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);
   }
 });
 
@@ -88,6 +98,11 @@ router.delete('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     console.log(`FavoritoActividadController.delete(${id})`);
+    const previous = await currentService.getByIdAsync(id);
+    if (previous == null) return res.status(StatusCodes.NOT_FOUND).send(`No se encontro el favorito con id: ${id}.`);
+    await AuthorizationService.assertCanWritePertenecienteResource(req.user.id, previous.id_perteneciente, {
+      allowTutor: true,
+    });
     const rowCount = await currentService.deleteByIdAsync(id);
     if (rowCount !== 0) {
       res.status(StatusCodes.OK).json({

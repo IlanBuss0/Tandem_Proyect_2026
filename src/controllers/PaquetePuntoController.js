@@ -2,9 +2,14 @@ import { Router } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import PaquetePuntoService from '../services/PaquetePuntoService.js';
 import PaquetePunto from '../entities/PaquetePunto.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 const currentService = new PaquetePuntoService();
+
+// Catalogo de paquetes de puntos comprables (tiene precio). Sin sistema de
+// roles de admin todavia, el minimo real es exigir login para escribir —
+// bloquea que cualquiera en internet cambie precios o cree paquetes falsos.
 
 router.get('', async (req, res) => {
   try {
@@ -26,7 +31,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('', async (req, res) => {
+router.post('', authMiddleware, async (req, res) => {
   try {
     const entity = new PaquetePunto(req.body);
     const newId = await currentService.createAsync(entity);
@@ -37,7 +42,7 @@ router.post('', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const entity = new PaquetePunto(req.body);
@@ -50,7 +55,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const rowCount = await currentService.deleteByIdAsync(id);
