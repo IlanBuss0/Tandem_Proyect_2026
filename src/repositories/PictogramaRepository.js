@@ -1,4 +1,5 @@
 import BD from '../db/BD.js';
+import { envConfig } from '../configs/env.config.js';
 
 const POPULAR_TITLES = [
   'comer',
@@ -76,6 +77,15 @@ function normalizeRow(row) {
     syncedAt: row.fecha_sincronizacion,
     targetPertenecienteId: row.id_perteneciente_destino ? Number(row.id_perteneciente_destino) : null,
     status: row.estado_publicacion || 'approved',
+    licenseCode: row.licencia_codigo,
+    licenseVersion: row.licencia_version,
+    licenseUrl: row.licencia_url,
+    attributionText: row.texto_atribucion,
+    sourceUrl: row.url_fuente,
+    // Default seguro: si nunca se corrio la migracion de licencias sobre
+    // esta fila, se trata como NO permitido para uso comercial.
+    commercialUseAllowed: row.uso_comercial_permitido === true,
+    shareAlikeRequired: row.share_alike_requerido === true,
   };
 }
 
@@ -113,6 +123,17 @@ function toDbValues(pictogram) {
     buildSearchText(pictogram),
     JSON.stringify(metadata),
     getPopularityScore(pictogram),
+    pictogram.licenseCode || null,
+    pictogram.licenseVersion || null,
+    pictogram.licenseUrl || null,
+    pictogram.attributionText || null,
+    pictogram.sourceUrl || null,
+    // Default seguro: si el proveedor no declara explicitamente
+    // commercialUseAllowed = true, el pictograma no se publica en modo
+    // comercial. Se aplica lo mismo a un resync (nunca se "hereda" un true
+    // implicito de un valor previo).
+    pictogram.commercialUseAllowed === true,
+    pictogram.shareAlikeRequired === true,
   ];
 }
 
@@ -155,6 +176,19 @@ export default class PictogramaRepository {
     await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS id_administrador_revisor INTEGER REFERENCES usuarios(id)`);
     await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS fecha_revision TIMESTAMPTZ`);
     await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS generacion_ia_id UUID`);
+    // Metadata legal por pictograma (migracion hacia librerias con licencia
+    // comercial). uso_comercial_permitido arranca en false: lo que no se
+    // verifico, no se publica en modo comercial. Ver scripts/add-pictogram-license-columns.mjs
+    // para el backfill de los registros existentes.
+    await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS licencia_codigo TEXT`);
+    await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS licencia_version TEXT`);
+    await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS licencia_url TEXT`);
+    await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS texto_atribucion TEXT`);
+    await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS url_fuente TEXT`);
+    await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS uso_comercial_permitido BOOLEAN NOT NULL DEFAULT false`);
+    await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS share_alike_requerido BOOLEAN NOT NULL DEFAULT false`);
+    await BD.execute(`ALTER TABLE pictogramas ADD COLUMN IF NOT EXISTS fecha_importacion TIMESTAMPTZ`);
+    await BD.execute(`CREATE INDEX IF NOT EXISTS idx_pictogramas_uso_comercial ON pictogramas (uso_comercial_permitido)`);
     await BD.execute(`CREATE INDEX IF NOT EXISTS idx_pictogramas_populares ON pictogramas (idioma, popularidad DESC, descarga_total DESC, uso_total DESC, titulo ASC)`);
     await BD.execute(`CREATE INDEX IF NOT EXISTS idx_pictogramas_publicacion ON pictogramas(estado_publicacion, fecha_creacion DESC)`);
     await BD.execute(`CREATE INDEX IF NOT EXISTS idx_pictogramas_generacion_ia ON pictogramas(generacion_ia_id) WHERE generacion_ia_id IS NOT NULL`);
@@ -175,6 +209,15 @@ export default class PictogramaRepository {
 
   searchAsync = async ({ search, category, language, limit, targetPertenecienteId }) => {
     const where = ["idioma = $1"];
+    // El switch de la migracion de licencias (Fase 4): en modo comercial
+    // solo se descubren pictogramas con uso_comercial_permitido = true.
+    // Se aplica solo a la BUSQUEDA (descubrimiento de contenido nuevo), no a
+    // los lookups por id (getByExternalIdAsync) — un favorito o una
+    // actividad que ya referencia un pictograma de ARASAAC no debe romperse
+    // retroactivamente, solo dejar de ofrecerse como resultado nuevo.
+    if (envConfig.pictogramCommercialMode) {
+      where.push('uso_comercial_permitido = true');
+    }
     if (targetPertenecienteId) {
       const ids = String(targetPertenecienteId).split(',').map(Number).filter(Boolean);
       if (ids.length > 0) {
@@ -235,7 +278,9 @@ export default class PictogramaRepository {
     const sql = `
       SELECT id, origen, origen_id, arasaac_id, titulo, tipo, url, url_descarga,
              etiquetas, idioma, autor, licencia, popularidad, uso_total, descarga_total,
-             guardado_total, fecha_sincronizacion, id_perteneciente_destino, estado_publicacion
+             guardado_total, fecha_sincronizacion, id_perteneciente_destino, estado_publicacion,
+             licencia_codigo, licencia_version, licencia_url, texto_atribucion, url_fuente,
+             uso_comercial_permitido, share_alike_requerido
       FROM pictogramas
       WHERE ${where.join(' AND ')}
       ORDER BY ${orderBy}
@@ -262,7 +307,9 @@ export default class PictogramaRepository {
     const sql = `
       SELECT id, origen, origen_id, arasaac_id, titulo, tipo, url, url_descarga,
              etiquetas, idioma, autor, licencia, popularidad, uso_total, descarga_total,
-             guardado_total, fecha_sincronizacion
+             guardado_total, fecha_sincronizacion,
+             licencia_codigo, licencia_version, licencia_url, texto_atribucion, url_fuente,
+             uso_comercial_permitido, share_alike_requerido
       FROM pictogramas
       WHERE idioma = $1
         AND (origen_id = $2 OR arasaac_id::TEXT = $2)
@@ -277,7 +324,9 @@ export default class PictogramaRepository {
       SELECT p.id, p.origen, p.origen_id, p.arasaac_id, p.titulo, p.tipo, p.url, p.url_descarga,
              p.etiquetas, p.idioma, p.autor, p.licencia, p.popularidad, p.uso_total,
              p.descarga_total, p.guardado_total, p.fecha_sincronizacion,
-             p.id_perteneciente_destino, p.estado_publicacion
+             p.id_perteneciente_destino, p.estado_publicacion,
+             p.licencia_codigo, p.licencia_version, p.licencia_url, p.texto_atribucion, p.url_fuente,
+             p.uso_comercial_permitido, p.share_alike_requerido
       FROM pictogramas p
       WHERE p.idioma = $1
         AND (p.origen_id = $2 OR p.arasaac_id::TEXT = $2)
@@ -314,6 +363,40 @@ export default class PictogramaRepository {
     );
 
     return rows.map((row) => ({ id: row.tipo, name: row.tipo, total: row.total }));
+  };
+
+  /**
+   * Agrupa por licencia + atribucion los pictogramas efectivamente visibles
+   * hoy (respeta PICTOGRAM_COMMERCIAL_MODE, igual que searchAsync) para que
+   * la pantalla de "Licencias y atribuciones" nunca quede desactualizada
+   * respecto de lo que la app realmente muestra.
+   */
+  getAttributionsAsync = async () => {
+    const where = envConfig.pictogramCommercialMode ? 'WHERE uso_comercial_permitido = true' : '';
+    const rows = await BD.query(`
+      SELECT
+        origen,
+        licencia_codigo,
+        licencia_version,
+        licencia_url,
+        texto_atribucion,
+        url_fuente,
+        COUNT(*)::INTEGER AS total
+      FROM pictogramas
+      ${where}
+      GROUP BY origen, licencia_codigo, licencia_version, licencia_url, texto_atribucion, url_fuente
+      ORDER BY total DESC
+    `);
+
+    return rows.map((row) => ({
+      source: row.origen,
+      licenseCode: row.licencia_codigo,
+      licenseVersion: row.licencia_version,
+      licenseUrl: row.licencia_url,
+      attributionText: row.texto_atribucion,
+      sourceUrl: row.url_fuente,
+      total: row.total,
+    }));
   };
 
   incrementDownloadAsync = async (id, language) => {
@@ -424,14 +507,16 @@ export default class PictogramaRepository {
         const values = [];
         const rowsSql = batch.map((pictogram, index) => {
           values.push(...toDbValues(pictogram));
-          const base = index * 14;
-          return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}::jsonb, $${base + 14})`;
+          const base = index * 21;
+          return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}::jsonb, $${base + 14}, $${base + 15}, $${base + 16}, $${base + 17}, $${base + 18}, $${base + 19}, $${base + 20}, $${base + 21})`;
         });
         const result = await client.query(
           `
             INSERT INTO pictogramas (
               origen, origen_id, arasaac_id, titulo, tipo, url, url_descarga,
-              etiquetas, idioma, autor, licencia, texto_busqueda, metadata, popularidad
+              etiquetas, idioma, autor, licencia, texto_busqueda, metadata, popularidad,
+              licencia_codigo, licencia_version, licencia_url, texto_atribucion, url_fuente,
+              uso_comercial_permitido, share_alike_requerido
             )
             VALUES ${rowsSql.join(', ')}
             ON CONFLICT (origen, idioma, origen_id)
@@ -447,6 +532,13 @@ export default class PictogramaRepository {
               texto_busqueda = EXCLUDED.texto_busqueda,
               metadata = EXCLUDED.metadata,
               popularidad = EXCLUDED.popularidad,
+              licencia_codigo = EXCLUDED.licencia_codigo,
+              licencia_version = EXCLUDED.licencia_version,
+              licencia_url = EXCLUDED.licencia_url,
+              texto_atribucion = EXCLUDED.texto_atribucion,
+              url_fuente = EXCLUDED.url_fuente,
+              uso_comercial_permitido = EXCLUDED.uso_comercial_permitido,
+              share_alike_requerido = EXCLUDED.share_alike_requerido,
               fecha_sincronizacion = NOW(),
               fecha_actualizacion = NOW()
           `,

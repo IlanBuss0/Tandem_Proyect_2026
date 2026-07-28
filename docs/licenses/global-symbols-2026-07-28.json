@@ -1,0 +1,557 @@
+[
+  {
+    "id": 120,
+    "slug": "aac-image-library",
+    "name": "AAC Image Library",
+    "publisher": "AAC Image Library",
+    "publisher_url": "https://aacil.neocities.org/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": 8
+  },
+  {
+    "id": 17,
+    "slug": "arasaac",
+    "name": "ARASAAC",
+    "publisher": "Pictograms Author: Sergio Palao, Owner: Government of Aragon (Spain)",
+    "publisher_url": "https://arasaac.org/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": 4
+  },
+  {
+    "id": 96,
+    "slug": "a",
+    "name": "Dyvogra",
+    "publisher": "DyvoGra",
+    "publisher_url": "https://www.dyvogra.com/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": 2
+  },
+  {
+    "id": 84,
+    "slug": "guemil",
+    "name": "Guemil",
+    "publisher": "Guemil Project",
+    "publisher_url": "http://www.guemil.info",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": 13
+  },
+  {
+    "id": 14,
+    "slug": "jellow",
+    "name": "Jellow",
+    "publisher": "IDC School of Design",
+    "publisher_url": "http://www.jellow.org",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": 3
+  },
+  {
+    "id": 13,
+    "slug": "mulberry",
+    "name": "Mulberry Symbols",
+    "publisher": "Steve Lee",
+    "publisher_url": "https://mulberrysymbols.org/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": 1
+  },
+  {
+    "id": 82,
+    "slug": "ocha-humanitarian-icons",
+    "name": "OCHA Humanitarian Icons",
+    "publisher": "OCHA Visual",
+    "publisher_url": "https://www.unocha.org/",
+    "status": "published",
+    "licence": {
+      "name": "Public Domain",
+      "url": null,
+      "version": null,
+      "properties": null
+    },
+    "featured_level": 6
+  },
+  {
+    "id": 83,
+    "slug": "openmoji",
+    "name": "OpenMoji",
+    "publisher": "OpenMoji Project",
+    "publisher_url": "https://openmoji.org",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": 5
+  },
+  {
+    "id": 88,
+    "slug": "otsimo",
+    "name": "Otsimo Turkish",
+    "publisher": "Otsimo (Ersin Kiymaz, Naz Yilmaz, Ersin Sinay)",
+    "publisher_url": "https://otsimo.com/en/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": 12
+  },
+  {
+    "id": 129,
+    "slug": "ai-realistic-symbols-a-picom-collection",
+    "name": "PiCom AI Realistic Symbols",
+    "publisher": "Sensory App House with Global Symbols",
+    "publisher_url": "https://www.sensoryapphouse.com/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": 10
+  },
+  {
+    "id": 202,
+    "slug": "picom-ai-sommi-action-symbols",
+    "name": "PiCom AI Sommi Action Symbols",
+    "publisher": "Sensory App House with Global Symbols",
+    "publisher_url": "https://www.sensoryapphouse.com/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": 11
+  },
+  {
+    "id": 197,
+    "slug": "picom-high-contrast-symbols",
+    "name": "PiCom High Contrast Symbols",
+    "publisher": "Sensory App House with Global Symbols",
+    "publisher_url": "https://www.sensoryapphouse.com/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": 10
+  },
+  {
+    "id": 110,
+    "slug": "picom-symbols",
+    "name": "PiCom Symbols",
+    "publisher": "Sensory App House Ltd",
+    "publisher_url": "https://www.sensoryapphouse.com/sensorypicom/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc/4.0/",
+      "version": "4.0",
+      "properties": "by-nc"
+    },
+    "featured_level": 7
+  },
+  {
+    "id": 15,
+    "slug": "tawasol",
+    "name": "Tawasol",
+    "publisher": "Mada",
+    "publisher_url": "http://tawasolsymbols.org",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": 8
+  },
+  {
+    "id": 95,
+    "slug": "typical-bulgarian-symbols",
+    "name": "Типично български символи / Typical Bulgarian Symbols",
+    "publisher": "UNICEF - Bulgaria",
+    "publisher_url": "https://www.unicef.org/bulgaria/en",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": 9
+  },
+  {
+    "id": 75,
+    "slug": "urdu-core-vocabulary-symbols",
+    "name": "Adam Urdu Symbols",
+    "publisher": "Misbah S Ansari,  Dr Ayesha Kamal Butt & E.A Draffan",
+    "publisher_url": null,
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 16,
+    "slug": "blissymbolics",
+    "name": "Blissymbolics",
+    "publisher": "Blissymbolics Communication International",
+    "publisher_url": "http://www.blissymbolics.org/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 67,
+    "slug": "crna-gora",
+    "name": "Crna Gora (Montenegro)",
+    "publisher": "Crna Gora",
+    "publisher_url": null,
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 74,
+    "slug": "hrvatski-simboli-za-pk",
+    "name": "Hrvatski simboli za PK (Croatia)",
+    "publisher": "Competence network ICT-AAC",
+    "publisher_url": "http://www.ict-aac.hr/index.php/hr/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 174,
+    "slug": "link-project",
+    "name": "Link Project Collection",
+    "publisher": "Global Symbols",
+    "publisher_url": "https://globalsymbols.com",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 205,
+    "slug": "additional-mulberry-symbols",
+    "name": "Mulberry Additional Symbols",
+    "publisher": "Verlag Karin Kestner GmbH",
+    "publisher_url": "https://www.kestner.de/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 86,
+    "slug": "corona-symbols",
+    "name": "Mulberry Plus Collection",
+    "publisher": "Mulberry and Global Symbols",
+    "publisher_url": "https://globalsymbols.com/symbolsets?locale=en",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 130,
+    "slug": "participatory-action-research",
+    "name": "Participatory Action Research",
+    "publisher": "Strategic Education Solutions - Texas Council for Developmental Disabilities",
+    "publisher_url": "https://selfadvocatenetwork.com/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 193,
+    "slug": "ai-cartoon-symbols-picom-core-fringe-set",
+    "name": "PiCom AI Cartoon Symbols",
+    "publisher": "Sensory App House with Global Symbols",
+    "publisher_url": "https://www.sensoryapphouse.com/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 201,
+    "slug": "picom-ai-cute-symbols",
+    "name": "PiCom AI Cute Symbols",
+    "publisher": "Sensory App House with Global Symbols",
+    "publisher_url": "https://www.sensoryapphouse.com/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 199,
+    "slug": "picom-auxiliary-verb-collection",
+    "name": "PiCom Auxiliary Verb & Inflection Collection",
+    "publisher": "Sensory App House with Global Symbols",
+    "publisher_url": "https://www.sensoryapphouse.com/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 221,
+    "slug": "picom-curriculum-symbols",
+    "name": "PiCom Curriculum Symbols",
+    "publisher": "Sensory App House Ltd",
+    "publisher_url": "https://www.sensoryapphouse.com/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 183,
+    "slug": "legal-collection-ai-realistic-symbols",
+    "name": "PiCom Legal AI Realistic Collection",
+    "publisher": "Sensory App House with Global Symbols",
+    "publisher_url": "https://www.sensoryapphouse.com/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 228,
+    "slug": "picom-unicode-symbols",
+    "name": "PiCom Unicode Symbols",
+    "publisher": "Sensory App House Ltd",
+    "publisher_url": "https://www.sensoryapphouse.com/",
+    "status": "published",
+    "licence": {
+      "name": "Public Domain",
+      "url": null,
+      "version": null,
+      "properties": null
+    },
+    "featured_level": null
+  },
+  {
+    "id": 81,
+    "slug": "sclera",
+    "name": "Sclera Symbols",
+    "publisher": "Sclera NPO",
+    "publisher_url": "https://sclera.be",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc/4.0/",
+      "version": "4.0",
+      "properties": "by-nc"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 116,
+    "slug": "alana-tran",
+    "name": "SEA Symbols",
+    "publisher": "Alana Tran",
+    "publisher_url": "https://www.linkedin.com/in/alana-a-tran/",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC ND 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-nd"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 103,
+    "slug": "shqip-simbolesh-set-albanian-symbols-set",
+    "name": "Shqip simbolesh set / Albanian symbols set",
+    "publisher": "UNICEF MK",
+    "publisher_url": null,
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 66,
+    "slug": "srbija-simboli",
+    "name": "Srbija Simboli - latinica (Serbia)",
+    "publisher": "Za svako dete: Glas",
+    "publisher_url": null,
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC ND 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-nd"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 133,
+    "slug": "stellar-symbols",
+    "name": "Stellar Symbols",
+    "publisher": "Colin McNamee",
+    "publisher_url": "https://drive.google.com/drive/folders/18dqW0veK8VTwPrnNq4c-AeWB4Ppn9lFn?usp=drive_link",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 97,
+    "slug": "typical-bulgarian-symbols-svg",
+    "name": "Typical Bulgarian Symbols",
+    "publisher": "UNICEF - Bulgaria",
+    "publisher_url": "https://www.unicef.org/bulgaria/en",
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 98,
+    "slug": "9ac07976-cabf-49b9-8924-396bd193d41a",
+    "name": "Македонски симболи (Macedonian)",
+    "publisher": "UNICEF MK",
+    "publisher_url": null,
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-sa"
+    },
+    "featured_level": null
+  },
+  {
+    "id": 76,
+    "slug": "315bbfe8-72ca-4c53-98a5-c56d0857747e",
+    "name": "Србија Симболи - ћирилица (Serbia)",
+    "publisher": "За свако дете: Глас",
+    "publisher_url": null,
+    "status": "published",
+    "licence": {
+      "name": "Creative Commons BY NC ND 4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+      "version": "4.0",
+      "properties": "by-nc-nd"
+    },
+    "featured_level": null
+  }
+]

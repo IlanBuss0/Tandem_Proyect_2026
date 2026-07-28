@@ -44,6 +44,12 @@ export const envConfig = {
   resendApiKey: process.env.RESEND_API_KEY || null,
   resendFromEmail: process.env.RESEND_FROM_EMAIL || 'Tandem <onboarding@resend.dev>',
   appPublicUrl: process.env.APP_PUBLIC_URL || 'http://localhost:8080',
+  // Migracion de pictogramas a librerias con licencia comercial. En false
+  // (default, desarrollo) se ve el catalogo completo incluyendo ARASAAC.
+  // En true (dia del lanzamiento freemium) solo se muestran pictogramas con
+  // uso_comercial_permitido = true — ARASAAC desaparece solo, sin tocar
+  // codigo ni borrar nada de la base.
+  pictogramCommercialMode: process.env.PICTOGRAM_COMMERCIAL_MODE === 'true',
 };
 
 export function validateEnvConfig() {

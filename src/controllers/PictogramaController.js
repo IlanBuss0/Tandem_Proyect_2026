@@ -102,6 +102,16 @@ router.get('', authIfTargetPerteneciente, async (req, res, next) => {
   }
 });
 
+router.get('/attributions', async (req, res) => {
+  try {
+    const attributions = await currentService.getAttributionsAsync();
+    res.status(StatusCodes.OK).json(attributions);
+  } catch (error) {
+    console.log(error);
+    res.status(StatusCodes.BAD_GATEWAY).json({ message: error.message });
+  }
+});
+
 router.get('/categories', async (req, res) => {
   try {
     const categories = await currentService.getCategoriesAsync(req.query.language || req.query.lang);
@@ -132,9 +142,12 @@ router.get('/favorites', authMiddleware, async (req, res) => {
   }
 });
 
-router.get('/:id/image', (req, res) => {
+router.get('/:id/image', async (req, res) => {
   try {
-    const imageUrl = currentService.getImageUrl(req.params.id, req.query.resolution);
+    // Resuelve el pictograma en la base local primero para saber de que
+    // proveedor es (cada uno arma su URL de forma distinta) y solo cae al
+    // comportamiento legado de ARASAAC si no se encuentra.
+    const imageUrl = await currentService.getImageUrlAsync(req.params.id, req.query.resolution);
     res.redirect(StatusCodes.TEMPORARY_REDIRECT, imageUrl);
   } catch (error) {
     res.status(StatusCodes.BAD_REQUEST).json({ message: error.message });

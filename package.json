@@ -21,6 +21,7 @@
     "test:professional-core": "node --test test/professional-core.test.js",
     "test:reportes": "node --test test/reportes-profesionales.test.js",
     "test:auth-register": "node --test test/auth-register.test.js",
+    "test:pictogram-licenses": "node --test test/pictogram-licenses.test.js",
     "seed:permissions": "node scripts/seed-permission-catalogs.mjs",
     "db:invites-vinculo": "node scripts/create-invites-vinculo-table.mjs",
     "db:invites-vinculo-profesional": "node scripts/create-invites-vinculo-profesional-table.mjs",
@@ -44,6 +45,10 @@
     "db:tareas-reportes-programados": "node scripts/create-tareas-reportes-programados-table.mjs",
     "db:email-tokens": "node scripts/create-email-verification-tokens-table.mjs",
     "db:nivel-apoyo-sugerido": "node scripts/add-nivel-apoyo-sugerido-column.mjs",
+    "db:pictogram-license": "node scripts/add-pictogram-license-columns.mjs",
+    "db:import-pictograms": "node scripts/import-pictogram-catalog.mjs",
+    "pictograms:gaps": "node scripts/detect-pictogram-gaps.mjs",
+    "pictograms:translate": "node scripts/translate-pictogram-labels.mjs",
     "sync:pictograms": "node scripts/sync-pictograms.mjs"
   },
   "dependencies": {
