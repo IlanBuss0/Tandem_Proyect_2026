@@ -1,4 +1,5 @@
 import UsuarioRepository from '../repositories/UsuarioRepository.js';
+import AppError from '../modules/errors/AppError.js';
 
 export default class UsuarioService {
   constructor() {
@@ -39,13 +40,13 @@ export default class UsuarioService {
     const usuarioConMismoCorreo = await this.UsuarioRepository.getByCorreoAsync(entity.correo);
 
     if (usuarioConMismoCorreo != null) {
-      throw new Error(`Ya existe un usuario con el correo ${entity.correo}.`);
+      throw new AppError(`Ya existe un usuario con el correo ${entity.correo}.`, 409);
     }
 
     const usuarioConMismoNombreUsuario = await this.UsuarioRepository.getByNombreUsuarioAsync(entity.nombre_usuario);
 
     if (usuarioConMismoNombreUsuario != null) {
-      throw new Error(`Ya existe un usuario con el nombre de usuario ${entity.nombre_usuario}.`);
+      throw new AppError(`Ya existe un usuario con el nombre de usuario ${entity.nombre_usuario}.`, 409);
     }
 
     const newId = await this.UsuarioRepository.createAsync(entity);
@@ -73,7 +74,7 @@ export default class UsuarioService {
       const usuarioConMismoCorreo = await this.UsuarioRepository.getByCorreoAsync(entity.correo);
 
       if (usuarioConMismoCorreo != null) {
-        throw new Error(`Ya existe un usuario con el correo ${entity.correo}.`);
+        throw new AppError(`Ya existe un usuario con el correo ${entity.correo}.`, 409);
       }
     }
 
@@ -81,7 +82,7 @@ export default class UsuarioService {
       const usuarioConMismoNombreUsuario = await this.UsuarioRepository.getByNombreUsuarioAsync(entity.nombre_usuario);
 
       if (usuarioConMismoNombreUsuario != null) {
-        throw new Error(`Ya existe un usuario con el nombre de usuario ${entity.nombre_usuario}.`);
+        throw new AppError(`Ya existe un usuario con el nombre de usuario ${entity.nombre_usuario}.`, 409);
       }
     }
 

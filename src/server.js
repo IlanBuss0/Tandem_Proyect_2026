@@ -91,7 +91,7 @@ import VinculoTutorPertenecienteController from './controllers/VinculoTutorPerte
 import { authMiddleware } from './middlewares/auth.middleware.js';
 import { csrfMiddleware } from './middlewares/csrf.middleware.js';
 import { errorMiddleware } from './middlewares/error.middleware.js';
-import { authRateLimiter, inviteRateLimiter, refreshRateLimiter, setupRedisRateLimit } from './middlewares/rate-limit.middleware.js';
+import { authRateLimiter, inviteRateLimiter, refreshRateLimiter, resendVerificationRateLimiter, setupRedisRateLimit } from './middlewares/rate-limit.middleware.js';
 import { envConfig, validateEnvConfig } from './configs/env.config.js';
 import { corsOptions } from './configs/cors.config.js';
 import BD from './db/BD.js';
@@ -158,7 +158,9 @@ app.get('/docs', (req, res) => {
 
 app.use('/api/auth/login', authRateLimiter);
 app.use('/api/auth/register', authRateLimiter);
+app.use('/api/auth/google', authRateLimiter);
 app.use('/api/auth/refresh', refreshRateLimiter);
+app.use('/api/auth/resend-verification', resendVerificationRateLimiter);
 app.use('/api/auth', AuthController);
 app.use('/api/pictograms', PictogramaController);
 app.use('/api/pictogramas', PictogramaController);

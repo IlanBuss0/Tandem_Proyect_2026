@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import AuthService from '../services/AuthService.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { csrfMiddleware } from '../middlewares/csrf.middleware.js';
 import { envConfig } from '../configs/env.config.js';
 import { ACCESS_COOKIE_NAME, CSRF_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../configs/auth-cookies.config.js';
 
@@ -114,5 +115,30 @@ router.post('/logout', async (req, res, next) => {
 });
 
 router.get('/me', authMiddleware, async (req, res, next) => { try { res.status(200).json({ ok: true, data: await AuthService.me(req) }); } catch (e) { next(e); } });
+
+router.post('/google', async (req, res, next) => {
+  try {
+    const { accessToken, rol, ...roleData } = req.body || {};
+    sendSession(res, 200, await AuthService.loginWithGoogle(accessToken, rol, roleData));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/verify-email', async (req, res, next) => {
+  try {
+    res.status(200).json({ ok: true, data: await AuthService.verifyEmail(req.query?.token) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/resend-verification', authMiddleware, csrfMiddleware, async (req, res, next) => {
+  try {
+    res.status(200).json({ ok: true, data: await AuthService.resendVerification(req.user.id) });
+  } catch (e) {
+    next(e);
+  }
+});
 
 export default router;

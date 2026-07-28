@@ -72,8 +72,10 @@ router.put('/:id', authMiddleware, async (req, res) => {
       return res.status(StatusCodes.NOT_FOUND).send(`No se encontro el perteneciente con id: ${id}.`);
     }
 
+    const sensitiveChange = hasSensitiveProfileChanges(req.body ?? {}, previous);
+
     await AuthorizationService.assertCanWritePertenecienteResource(req.user.id, id, {
-      pertenecientePermissionName: hasSensitiveProfileChanges(req.body ?? {}, previous)
+      pertenecientePermissionName: sensitiveChange
         ? PERTENECIENTE_PERMISSIONS.EDITAR_PERFIL_SENSIBLE
         : PERTENECIENTE_PERMISSIONS.EDITAR_PERFIL,
       allowTutor: true,
@@ -81,11 +83,53 @@ router.put('/:id', authMiddleware, async (req, res) => {
 
     entity.id = id;
     entity.id_usuario = previous.id_usuario;
+    // Este endpoint lo usa un tutor/profesional (o el propio perteneciente
+    // autogestionado) para confirmar o corregir el nivel de apoyo. Si el
+    // body trae id_nivel_apoyo, es porque alguien con permiso de edicion
+    // sensible lo tuvo delante y lo guardo a proposito (haya cambiado el
+    // valor o no) — eso ya cuenta como confirmacion, asi que se apaga el
+    // flag de "sugerido por el cuestionario".
+    entity.nivel_apoyo_sugerido = req.body?.id_nivel_apoyo !== undefined ? false : previous.nivel_apoyo_sugerido;
     const rowsAffected = await currentService.updateAsync(entity);
     if (rowsAffected !== 0) res.status(StatusCodes.OK).json({ message: `Se actualizo el perteneciente con id: ${id}`, rowsAffected });
     else res.status(StatusCodes.NOT_FOUND).send(`No se encontro el perteneciente con id: ${id}.`);
   } catch (error) {
     res.status(StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);
+  }
+});
+
+router.put('/:id/onboarding', authMiddleware, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const previous = await currentService.getByIdAsync(id);
+    if (previous == null) {
+      return res.status(StatusCodes.NOT_FOUND).send(`No se encontro el perteneciente con id: ${id}.`);
+    }
+
+    // El cuestionario de onboarding es una autoevaluacion: solo lo puede
+    // completar el propio perteneciente sobre si mismo, nunca un tutor en
+    // su nombre (por eso allowTutor: false y no se pide ningun permiso
+    // especifico — el chequeo de "es este mismo perteneciente" ya alcanza).
+    await AuthorizationService.assertCanWritePertenecienteResource(req.user.id, id, {
+      allowTutor: false,
+    });
+
+    const { id_nivel_apoyo, id_autonomia_operativa } = req.body ?? {};
+    const entity = new Perteneciente({
+      ...previous,
+      id,
+      id_nivel_apoyo: id_nivel_apoyo ?? previous.id_nivel_apoyo,
+      id_autonomia_operativa: id_autonomia_operativa ?? previous.id_autonomia_operativa,
+      // Marcado como sugerido: adapta la interfaz pero no bloquea nada, y
+      // queda a la vista del profesional/tutor para que lo confirme.
+      nivel_apoyo_sugerido: true,
+    });
+
+    const rowsAffected = await currentService.updateAsync(entity);
+    if (rowsAffected !== 0) res.status(StatusCodes.OK).json({ message: 'Se guardo la sugerencia del cuestionario.', rowsAffected });
+    else res.status(StatusCodes.NOT_FOUND).send(`No se encontro el perteneciente con id: ${id}.`);
+  } catch (error) {
+    res.status(error?.statusCode ?? StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);
   }
 });
 

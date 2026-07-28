@@ -46,6 +46,17 @@ export const reporteProfesionalCreateRateLimiter = rateLimit({
   message: { error: 'Demasiados reportes generados en poco tiempo. Probá nuevamente en unos minutos.' },
 });
 
+// Cada request dispara un envio real por Resend (cuota gratis limitada), asi
+// que va bien restringido: alcanza de sobra para un usuario legitimo que no
+// vio el mail, pero no para quemar la cuota.
+export const resendVerificationRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Ya pediste el reenvío varias veces. Esperá unos minutos y volvé a intentar.' },
+});
+
 export async function setupRedisRateLimit() {
   const { isRedisEnabled } = await import('../redis/redisClient.js');
   if (!isRedisEnabled()) return;

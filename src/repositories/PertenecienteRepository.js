@@ -15,7 +15,8 @@ export default class PertenecienteRepository {
         id_nivel_apoyo,
         id_autonomia_operativa,
         puede_autogestionarse,
-        observacion_general
+        observacion_general,
+        nivel_apoyo_sugerido
       FROM pertenecientes
       ORDER BY id DESC
     `;
@@ -33,7 +34,8 @@ export default class PertenecienteRepository {
         id_nivel_apoyo,
         id_autonomia_operativa,
         puede_autogestionarse,
-        observacion_general
+        observacion_general,
+        nivel_apoyo_sugerido
       FROM pertenecientes
       WHERE id = $1
     `;
@@ -51,7 +53,8 @@ export default class PertenecienteRepository {
         id_nivel_apoyo,
         id_autonomia_operativa,
         puede_autogestionarse,
-        observacion_general
+        observacion_general,
+        nivel_apoyo_sugerido
       FROM pertenecientes
       WHERE id_usuario = $1
     `;
@@ -68,14 +71,16 @@ export default class PertenecienteRepository {
         id_nivel_apoyo,
         id_autonomia_operativa,
         puede_autogestionarse,
-        observacion_general
+        observacion_general,
+        nivel_apoyo_sugerido
       )
       VALUES (
         $1,
         $2,
         $3,
         COALESCE($4, false),
-        $5
+        $5,
+        COALESCE($6, false)
       )
       RETURNING id
     `;
@@ -86,6 +91,7 @@ export default class PertenecienteRepository {
       entity?.id_autonomia_operativa,
       entity?.puede_autogestionarse ?? false,
       entity?.observacion_general ?? null,
+      entity?.nivel_apoyo_sugerido ?? false,
     ];
 
     const result = await BD.queryOne(sql, values);
@@ -109,7 +115,8 @@ export default class PertenecienteRepository {
         id_nivel_apoyo = $3,
         id_autonomia_operativa = $4,
         puede_autogestionarse = $5,
-        observacion_general = $6
+        observacion_general = $6,
+        nivel_apoyo_sugerido = $7
       WHERE id = $1
     `;
 
@@ -120,6 +127,7 @@ export default class PertenecienteRepository {
       entity?.id_autonomia_operativa ?? previousEntity.id_autonomia_operativa,
       entity?.puede_autogestionarse ?? previousEntity.puede_autogestionarse,
       entity?.observacion_general ?? previousEntity.observacion_general,
+      entity?.nivel_apoyo_sugerido ?? previousEntity.nivel_apoyo_sugerido,
     ];
 
     return await BD.execute(sql, values);

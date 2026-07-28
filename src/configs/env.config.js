@@ -40,6 +40,10 @@ export const envConfig = {
   falRequestTimeoutMs: Number.parseInt(process.env.FAL_REQUEST_TIMEOUT_MS || '120000', 10),
   geminiApiKey: process.env.GEMINI_API_KEY || null,
   groqApiKey: process.env.GROQ_API_KEY || null,
+  googleClientId: process.env.GOOGLE_CLIENT_ID || null,
+  resendApiKey: process.env.RESEND_API_KEY || null,
+  resendFromEmail: process.env.RESEND_FROM_EMAIL || 'Tandem <onboarding@resend.dev>',
+  appPublicUrl: process.env.APP_PUBLIC_URL || 'http://localhost:8080',
 };
 
 export function validateEnvConfig() {
