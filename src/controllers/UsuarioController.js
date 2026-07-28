@@ -3,9 +3,13 @@ import { StatusCodes } from 'http-status-codes';
 
 import UsuarioService from '../services/UsuarioService.js';
 import Usuario from '../entities/Usuario.js';
+import PertenecienteRepository from '../repositories/PertenecienteRepository.js';
+import AuthorizationService from '../services/AuthorizationService.js';
+import { PERTENECIENTE_PERMISSIONS } from '../modules/security/permissions.constants.js';
 
 const router = Router();
 const currentService = new UsuarioService();
+const pertenecienteRepository = new PertenecienteRepository();
 
 // El login usa AuthRepository (no este service) para comparar contrasena_hash,
 // asi que nunca hace falta que el hash viaje en estas respuestas — se saca
@@ -83,9 +87,27 @@ router.put('/:id', async (req, res) => {
     console.log(`UsuarioController.update(${id})`);
 
     if (Number(req.user.id) !== id) {
-      return res
-        .status(StatusCodes.FORBIDDEN)
-        .send('No autorizado para modificar este usuario.');
+      // No es el propio usuario: el unico otro caso legitimo es un
+      // tutor/profesional autorizado editando los datos basicos del
+      // perteneciente que tiene vinculado (nombre, correo, telefono, etc).
+      // Se delega en el mismo chequeo que ya protege PertenecienteController.
+      const perteneciente = await pertenecienteRepository.getByUsuarioIdAsync(id);
+      if (!perteneciente) {
+        return res
+          .status(StatusCodes.FORBIDDEN)
+          .send('No autorizado para modificar este usuario.');
+      }
+
+      try {
+        await AuthorizationService.assertCanWritePertenecienteResource(req.user.id, perteneciente.id, {
+          pertenecientePermissionName: PERTENECIENTE_PERMISSIONS.EDITAR_PERFIL,
+          allowTutor: true,
+        });
+      } catch (authError) {
+        return res
+          .status(authError?.statusCode ?? StatusCodes.FORBIDDEN)
+          .send('No autorizado para modificar este usuario.');
+      }
     }
 
     // contrasena_hash e id_tipo_usuario nunca se aceptan desde el body: un
