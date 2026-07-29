@@ -351,11 +351,16 @@ export default class PictogramaRepository {
   };
 
   getCategoriesAsync = async (language) => {
+    // Mismo criterio que searchAsync: en modo comercial los conteos por
+    // categoria tampoco deben incluir pictogramas sin uso_comercial_permitido,
+    // si no el desplegable de categorias queda mintiendo sobre cuanto
+    // contenido hay realmente disponible.
+    const commercialFilter = envConfig.pictogramCommercialMode ? "AND uso_comercial_permitido = true" : '';
     const rows = await BD.query(
       `
         SELECT tipo, COUNT(*)::INTEGER AS total
         FROM pictogramas
-        WHERE idioma = $1 AND (origen <> 'TANDEM_AI' OR estado_publicacion = 'approved')
+        WHERE idioma = $1 AND (origen <> 'TANDEM_AI' OR estado_publicacion = 'approved') ${commercialFilter}
         GROUP BY tipo
         ORDER BY tipo ASC
       `,
