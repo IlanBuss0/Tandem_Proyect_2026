@@ -55,6 +55,26 @@ test('la whitelist de Global Symbols NUNCA incluye picom-symbols (symbolset 110,
   }
 });
 
+// Blissymbolics es CC BY-SA 4.0, o sea legalmente usable — se excluye por un
+// motivo VISUAL: no son dibujos sino un sistema de escritura simbolica
+// abstracta (un circulo, una linea) que hay que aprender para leerlo. En el
+// primer import copo 315 de 324 pictogramas y dejo el catalogo ilegible,
+// porque es la coleccion con mas etiquetas en espanol y se buscaba en espanol.
+// Este test existe para que no vuelva a entrar "porque la licencia da".
+test('la whitelist NUNCA incluye Blissymbolics (symbolset 16): licencia ok pero ilegible para CAA', () => {
+  assert.equal(GLOBAL_SYMBOLS_ALLOWED_SETS.has(16), false);
+  for (const [, info] of GLOBAL_SYMBOLS_ALLOWED_SETS) {
+    assert.notEqual(info.slug, 'blissymbolics');
+  }
+});
+
+test('la whitelist NUNCA incluye PiCom Unicode (symbolset 228): son glifos, no ilustraciones', () => {
+  assert.equal(GLOBAL_SYMBOLS_ALLOWED_SETS.has(228), false);
+  for (const [, info] of GLOBAL_SYMBOLS_ALLOWED_SETS) {
+    assert.notEqual(info.slug, 'picom-unicode-symbols');
+  }
+});
+
 test('ninguna coleccion de la whitelist tiene una licencia bloqueada', () => {
   for (const [, info] of GLOBAL_SYMBOLS_ALLOWED_SETS) {
     assert.equal(BLOCKED_LICENSES.has(info.licenseCode), false, `${info.slug} no deberia estar en la whitelist`);

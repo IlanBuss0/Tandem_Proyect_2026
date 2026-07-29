@@ -11,6 +11,9 @@ import { GLOBAL_SYMBOLS_ALLOWED_SETS, filterAllowedGlobalSymbolsResults } from '
 //     por filterAllowedGlobalSymbolsResults() antes de normalizarse.
 const BASE_URL = 'https://globalsymbols.com/api/v1';
 const DEFAULT_TIMEOUT_MS = 15000;
+// La API rechaza limit > 50 con {"error":"limit does not have a valid value"}.
+// Pedir 100 o 200 no devuelve mas resultados: devuelve CERO.
+const MAX_API_LIMIT = 50;
 
 // Mapa minimo ISO 639-1 -> ISO 639-3 para los idiomas que usa Tandem hoy.
 // Si en el futuro se agrega un idioma nuevo, hay que sumarlo aca.
@@ -68,11 +71,11 @@ export default class GlobalSymbolsProvider {
     };
   }
 
-  async searchRaw({ language, text, limit = 60 }) {
+  async searchRaw({ language, text, limit = MAX_API_LIMIT }) {
     const iso = toIso639_3(language);
     try {
       const response = await axiosClient.get(`${BASE_URL}/labels/search`, {
-        params: { query: text, language: iso, limit },
+        params: { query: text, language: iso, limit: Math.min(limit, MAX_API_LIMIT) },
         headers: { Accept: 'application/json' },
         timeout: DEFAULT_TIMEOUT_MS,
       });
@@ -85,7 +88,7 @@ export default class GlobalSymbolsProvider {
 
   async search({ language, text, limit }) {
     if (!text) return []; // esta API no tiene un endpoint de "novedades" como ARASAAC
-    const raw = await this.searchRaw({ language, text, limit: Math.max(limit || 24, 24) * 3 });
+    const raw = await this.searchRaw({ language, text, limit: MAX_API_LIMIT });
     const allowed = filterAllowedGlobalSymbolsResults(raw);
     return allowed
       .map((item) => this.normalizePictogram(item, language))
@@ -102,17 +105,28 @@ export default class GlobalSymbolsProvider {
 
   /**
    * Recorre las colecciones aprobadas trayendo resultados para una lista
-   * amplia de terminos de busqueda (mismo patron que ARASAAC usaba para su
-   * sync completo, ya que Global Symbols tampoco expone "traeme todo").
-   * Pensado para el importador de catalogo (Fase 5), no para uso en vivo.
+   * amplia de terminos de busqueda (Global Symbols no expone "traeme todo").
+   *
+   * IMPORTANTE — se busca en INGLES, no en espanol. Esta fue la causa del
+   * primer import fallido: buscando en espanol, las colecciones con mas
+   * etiquetas hispanas son ARASAAC (bloqueada) y Blissymbolics, con lo cual
+   * el 97% del catalogo importado termino siendo Blissymbolics (simbolos
+   * abstractos ilegibles) y las colecciones utiles quedaron con 1-2 resultados.
+   * Medido sobre 750 labels: en ingles, OpenMoji devuelve 114 coincidencias,
+   * PiCom AI Realistic 95, Cartoon 60, HighContrast 53; Blissymbolics 12.
+   *
+   * Los nombres quedan en ingles y los traduce despues
+   * scripts/translate-catalog-labels.mjs.
    */
-  async syncCatalog({ language, searchTerms }) {
+  async syncCatalog({ searchTerms, language = 'en' }) {
     const byId = new Map();
     for (const term of searchTerms || []) {
-      const raw = await this.searchRaw({ language, text: term, limit: 100 }).catch(() => []);
+      const raw = await this.searchRaw({ language, text: term }).catch(() => []);
       const allowed = filterAllowedGlobalSymbolsResults(raw);
       for (const item of allowed) {
-        const normalized = this.normalizePictogram(item, language);
+        // Se normaliza como 'es' aunque la busqueda fue en ingles: el catalogo
+        // local es en espanol y el nombre se traduce en el paso siguiente.
+        const normalized = this.normalizePictogram(item, 'es');
         if (normalized) byId.set(normalized.id, normalized);
       }
     }

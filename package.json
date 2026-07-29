@@ -47,8 +47,12 @@
     "db:nivel-apoyo-sugerido": "node scripts/add-nivel-apoyo-sugerido-column.mjs",
     "db:pictogram-license": "node scripts/add-pictogram-license-columns.mjs",
     "db:import-pictograms": "node scripts/import-pictogram-catalog.mjs",
+    "pictograms:mulberry": "node scripts/import-mulberry.mjs",
+    "pictograms:openmoji": "node scripts/import-openmoji.mjs",
+    "pictograms:sync": "node scripts/sync-pictograms.mjs",
     "pictograms:gaps": "node scripts/detect-pictogram-gaps.mjs",
     "pictograms:translate": "node scripts/translate-pictogram-labels.mjs",
+    "pictograms:translate-catalog": "node scripts/translate-catalog-labels.mjs",
     "sync:pictograms": "node scripts/sync-pictograms.mjs"
   },
   "dependencies": {

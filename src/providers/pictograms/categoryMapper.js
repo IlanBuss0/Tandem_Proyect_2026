@@ -111,6 +111,13 @@ export const categoryByExternalCategory = {
 };
 
 export const categoryRules = [
+  // Emociones va PRIMERO a proposito: las categorias de Mulberry son
+  // compuestas ("People Feelings", "People Emotions") y si 'people' matchea
+  // antes, un pictograma de emociones termina clasificado en 'personas'.
+  { includes: ['feeling', 'emotion', 'mood'], category: 'emociones' },
+  // Higiene antes que salud: "Healthcare Grooming items" (cepillo de dientes,
+  // peine, jabon) es higiene cotidiana, no un tema medico.
+  { includes: ['grooming', 'hygiene', 'bathroom', 'toilet'], category: 'higiene' },
   { includes: ['education', 'educational', 'school', 'academic'], category: 'escuela y aprendizaje' },
   { includes: ['health', 'sanitary', 'medical', 'medicine', 'covid', 'physiotherapy', 'locomotor'], category: 'salud y cuerpo' },
   { includes: ['residential', 'domestic', 'house', 'home'], category: 'casa' },
@@ -126,7 +133,47 @@ export const categoryRules = [
   { includes: ['verb', 'event', 'routine', 'action'], category: 'acciones y rutinas' },
   { includes: ['object', 'material', 'equipment', 'appliance'], category: 'objetos' },
   { includes: ['color', 'number', 'shape', 'quantity', 'concept'], category: 'conceptos' },
+  // Categorias compuestas de Mulberry que no caen en ninguna regla de arriba.
+  { includes: ['grooming', 'hygiene', 'bathroom', 'toilet'], category: 'higiene' },
+  { includes: ['clothing', 'clothes', 'footwear'], category: 'vida diaria' },
+  { includes: ['alphabet', 'letter', 'punctuation', 'pronoun', 'preposition'], category: 'comunicacion' },
+  { includes: ['religion', 'festival', 'celebration'], category: 'ocio' },
+  { includes: ['descriptive', 'position', 'direction', 'state'], category: 'conceptos' },
+  { includes: ['electrical', 'tv', 'phone'], category: 'tecnologia' },
+  { includes: ['country', 'flag', 'map', 'city', 'town'], category: 'lugares' },
 ];
+
+function matchByRules(text) {
+  const normalized = String(text || '').toLowerCase().replace(/[_-]/g, ' ');
+  if (!normalized) return null;
+  return categoryRules.find((rule) => rule.includes.some((token) => normalized.includes(token)))?.category ?? null;
+}
+
+/**
+ * Resuelve la categoria de Tandem cuando el proveedor da una categoria
+ * COMPUESTA mas un tipo gramatical por separado (el caso de Mulberry:
+ * category="Food Fruit", grammar="Noun").
+ *
+ * El orden importa y es la razon de que esta funcion exista: si se resolviera
+ * todo junto, `grammar` gana siempre porque "noun" esta en el mapa exacto y
+ * "Food Fruit" no —  el 82% del catalogo de Mulberry terminaba en 'objetos'.
+ * La categoria compuesta es mucho mas informativa, asi que va primero y el
+ * tipo gramatical queda solo como red de contencion.
+ *
+ * @param {{ composite?: string, partOfSpeech?: string }} input
+ */
+export function resolveCompositeCategory({ composite, partOfSpeech } = {}) {
+  const compositeKey = String(composite || '').toLowerCase().trim();
+  if (compositeKey && categoryByExternalCategory[compositeKey]) return categoryByExternalCategory[compositeKey];
+
+  const byCompositeRule = matchByRules(composite);
+  if (byCompositeRule) return byCompositeRule;
+
+  const posKey = String(partOfSpeech || '').toLowerCase().trim();
+  if (posKey && categoryByExternalCategory[posKey]) return categoryByExternalCategory[posKey];
+
+  return matchByRules(partOfSpeech) ?? 'otros';
+}
 
 // part_of_speech que devuelve Global Symbols para cada label (noun, verb,
 // adjective, etc.) reusa el mismo mapa: son las mismas claves en ingles.

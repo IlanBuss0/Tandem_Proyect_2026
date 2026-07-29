@@ -141,16 +141,6 @@ export const GLOBAL_SYMBOLS_ALLOWED_SETS = new Map([
     licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/',
     attributionText: 'Adam Urdu Symbols. Usados bajo Creative Commons Attribution-ShareAlike 4.0.',
   }],
-  [16, {
-    slug: 'blissymbolics',
-    name: 'Blissymbolics',
-    publisher: 'Blissymbolics Communication International',
-    publisherUrl: 'http://www.blissymbolics.org/',
-    licenseCode: 'CC-BY-SA-4.0',
-    licenseVersion: '4.0',
-    licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/',
-    attributionText: 'Blissymbolics, Blissymbolics Communication International. Usados bajo Creative Commons Attribution-ShareAlike 4.0.',
-  }],
   [205, {
     slug: 'additional-mulberry-symbols',
     name: 'Mulberry Additional Symbols',
@@ -221,16 +211,6 @@ export const GLOBAL_SYMBOLS_ALLOWED_SETS = new Map([
     licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/',
     attributionText: 'Algunos pictogramas pertenecen a Sensory App House y Global Symbols. Usados bajo Creative Commons Attribution-ShareAlike 4.0.',
   }],
-  [228, {
-    slug: 'picom-unicode-symbols',
-    name: 'PiCom Unicode Symbols',
-    publisher: 'Sensory App House Ltd',
-    publisherUrl: 'https://www.sensoryapphouse.com/',
-    licenseCode: 'PUBLIC_DOMAIN',
-    licenseVersion: null,
-    licenseUrl: null,
-    attributionText: 'PiCom Unicode Symbols, Sensory App House Ltd (dominio publico).',
-  }],
   [133, {
     slug: 'stellar-symbols',
     name: 'Stellar Symbols',
@@ -245,9 +225,28 @@ export const GLOBAL_SYMBOLS_ALLOWED_SETS = new Map([
 
 // IDs de symbolset explicitamente excluidos, documentados para que nadie los
 // agregue "por accidente" en una futura edicion de este archivo.
+//
+// Hay DOS motivos distintos de exclusion y no conviene confundirlos:
+//   a) LEGAL   -> la licencia no permite uso comercial.
+//   b) VISUAL  -> la licencia esta bien, pero las imagenes no se entienden
+//                 para la poblacion de Tandem. Excluir por esto es una
+//                 decision de producto, no legal.
 export const GLOBAL_SYMBOLS_BLOCKED_SETS = new Map([
-  [17, { slug: 'arasaac', name: 'ARASAAC', licenseCode: 'CC-BY-NC-SA-4.0' }],
-  [110, { slug: 'picom-symbols', name: 'PiCom Symbols', licenseCode: 'CC-BY-NC-4.0' }],
+  // (a) Legal: NonCommercial, incompatible con freemium.
+  [17, { slug: 'arasaac', name: 'ARASAAC', licenseCode: 'CC-BY-NC-SA-4.0', reason: 'legal' }],
+  [110, { slug: 'picom-symbols', name: 'PiCom Symbols', licenseCode: 'CC-BY-NC-4.0', reason: 'legal' }],
+
+  // (b) Visual: Blissymbolics es CC BY-SA 4.0 (legalmente usable) pero NO son
+  // dibujos: es un sistema de escritura simbolica abstracta (un circulo, una
+  // linea) que hay que aprender para poder leerlo. En la primera importacion
+  // copo 315 de 324 pictogramas y el catalogo quedo ilegible, porque es la
+  // coleccion con mas etiquetas en espanol de toda la API y el importador
+  // buscaba en espanol. Queda afuera a proposito.
+  [16, { slug: 'blissymbolics', name: 'Blissymbolics', licenseCode: 'CC-BY-SA-4.0', reason: 'visual' }],
+
+  // (b) Visual: glifos Unicode minimos (~500 bytes), no ilustraciones. Sirven
+  // como tipografia, no como pictograma de CAA.
+  [228, { slug: 'picom-unicode-symbols', name: 'PiCom Unicode Symbols', licenseCode: 'PUBLIC_DOMAIN', reason: 'visual' }],
 ]);
 
 /**

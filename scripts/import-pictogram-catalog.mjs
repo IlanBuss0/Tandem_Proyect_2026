@@ -23,20 +23,30 @@ import { fileURLToPath } from 'url';
 //                                                               directo a globalsymbols.com)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LANGUAGE = process.env.PICTOGRAM_SYNC_LANGUAGE || 'es';
+// Idioma de BUSQUEDA contra la API (ingles, ver comentario de los terminos).
+// El idioma con el que se guarda en la base es siempre 'es'.
+const SEARCH_LANGUAGE = 'en';
 
-// Vocabulario nucleo de CAA en espanol + vocabulario rioplatense. Mismo
-// espiritu que SYNC_SEARCH_TERMS de ArasaacProvider, pensado para maximizar
-// cobertura real de conceptos de uso diario.
+// Vocabulario nucleo de CAA, EN INGLES a proposito.
+//
+// La primera version de este script buscaba en espanol y salio mal: las
+// colecciones con mas etiquetas hispanas en Global Symbols son ARASAAC
+// (bloqueada por licencia) y Blissymbolics, asi que el import trajo 315
+// Blissymbolics (simbolos abstractos, ilegibles) sobre 324 totales, y Mulberry
+// / OpenMoji / OCHA quedaron en cero.
+//
+// Buscando en ingles la distribucion se da vuelta por completo. Los nombres
+// entran en ingles y los traduce despues `npm run pictograms:translate-catalog`.
 const DEFAULT_SEARCH_TERMS = [
-  'comer', 'beber', 'agua', 'dormir', 'jugar', 'bano', 'ayuda', 'dolor',
-  'contento', 'triste', 'enfadado', 'miedo', 'cansado', 'casa', 'escuela',
-  'mama', 'papa', 'familia', 'vestirse', 'lavarse las manos', 'musica',
-  'medico', 'trabajar', 'leer', 'escribir', 'esperar', 'salir', 'si', 'no',
-  'gracias', 'por favor', 'hola', 'chau', 'quiero', 'necesito', 'siento',
-  'colectivo', 'remera', 'pileta', 'auto', 'telefono', 'computadora',
-  'television', 'comida', 'fruta', 'verdura', 'ropa', 'zapatos', 'cama',
-  'silla', 'mesa', 'cocina', 'bano', 'jardin', 'calle', 'tienda', 'dinero',
+  'eat', 'drink', 'water', 'sleep', 'play', 'toilet', 'help', 'pain',
+  'happy', 'sad', 'angry', 'scared', 'tired', 'house', 'school',
+  'mother', 'father', 'family', 'get dressed', 'hand washing', 'music',
+  'doctor', 'work', 'read', 'write', 'wait', 'go out', 'yes', 'no',
+  'thank you', 'please', 'hello', 'goodbye', 'want', 'need', 'feel',
+  'bus', 't-shirt', 'swimming pool', 'car', 'phone', 'computer',
+  'television', 'food', 'fruit', 'vegetable', 'clothes', 'shoes', 'bed',
+  'chair', 'table', 'kitchen', 'bathroom', 'garden', 'street', 'shop', 'money',
+  'hospital', 'medicine', 'emergency', 'bread', 'milk', 'fish', 'meat',
 ];
 
 function parseArgs() {
@@ -82,7 +92,7 @@ async function rehostImage(pictogram, fileStorage) {
 
 async function main() {
   const { searchTerms, rehost } = parseArgs();
-  console.log(`Importando catalogo de Global Symbols. Idioma: ${LANGUAGE}. Terminos: ${searchTerms.length}. Rehost: ${rehost}.`);
+  console.log(`Importando catalogo de Global Symbols. Busqueda en: ${SEARCH_LANGUAGE}. Terminos: ${searchTerms.length}. Rehost: ${rehost}.`);
 
   const repository = new PictogramaRepository();
   await repository.ensureSchemaAsync();
@@ -102,7 +112,7 @@ async function main() {
     console.warn('No se pudo guardar la evidencia de licencias (no bloquea el import):', error.message);
   }
 
-  const pictograms = await provider.syncCatalog({ language: LANGUAGE, searchTerms });
+  const pictograms = await provider.syncCatalog({ language: SEARCH_LANGUAGE, searchTerms });
   console.log(`Encontrados ${pictograms.length} pictogramas unicos en ${GLOBAL_SYMBOLS_ALLOWED_SETS.size} colecciones aprobadas.`);
 
   let imported = 0;

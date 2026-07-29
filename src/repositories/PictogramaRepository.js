@@ -34,6 +34,15 @@ const POPULAR_TITLES = [
   'autobus',
 ];
 
+/**
+ * Escapa los metacaracteres de regex de un termino de busqueda antes de
+ * interpolarlo en un patron de Postgres (`~*`). Sin esto, alguien buscando
+ * "(" o "a+b" haria fallar la query con un error de regex invalida.
+ */
+function escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function normalizeText(value) {
   return String(value || '')
     .normalize('NFD')
@@ -103,7 +112,13 @@ function buildSearchText(pictogram) {
 function toDbValues(pictogram) {
   const origen = pictogram.source || 'ARASAAC';
   const origenId = String(pictogram.arasaacId || pictogram.id);
+  // Se conserva el metadata que trae el proveedor (nombre original en ingles,
+  // categoria original, assetHash para el sync incremental, etc.) y se le
+  // suman los dos campos historicos. Antes esta funcion lo descartaba y
+  // reconstruia el objeto de cero, con lo cual el assetHash nunca llegaba a
+  // la base y cada sync mensual volvia a subir el catalogo completo.
   const metadata = {
+    ...(pictogram.metadata && typeof pictogram.metadata === 'object' ? pictogram.metadata : {}),
     id: pictogram.id,
     favorite: pictogram.favorite || false,
   };
@@ -261,13 +276,27 @@ export default class PictogramaRepository {
       const exactIndex = params.length;
       params.push(`${searchText}%`);
       const prefixIndex = params.length;
+      // Coincidencia por PALABRA COMPLETA (\y = word boundary de Postgres).
+      // Sin este nivel, buscar "agua" devolvia primero "country Paraguay" y
+      // "flag Nicaragua", porque el substring esta ahi adentro y quedaba
+      // empatado con todo lo demas, decidiendose por orden alfabetico.
+      // Se escapan los metacaracteres de regex del termino buscado.
+      params.push(escapeRegex(searchText));
+      const wordIndex = params.length;
       orderBy = `
         CASE
           WHEN LOWER(titulo) = $${exactIndex} THEN 0
           WHEN LOWER(titulo) LIKE $${prefixIndex} THEN 1
-          WHEN LOWER(titulo) LIKE $${index} THEN 2
-          ELSE 3
+          WHEN titulo ~* ('\\y' || $${wordIndex} || '\\y') THEN 2
+          WHEN EXISTS (
+            SELECT 1 FROM unnest(etiquetas) AS etiqueta
+            WHERE LOWER(etiqueta) = $${exactIndex}
+          ) THEN 3
+          WHEN LOWER(titulo) LIKE $${index} THEN 4
+          ELSE 5
         END,
+        (popularidad + descarga_total + uso_total + guardado_total) DESC,
+        LENGTH(titulo) ASC,
         titulo ASC
       `;
     }

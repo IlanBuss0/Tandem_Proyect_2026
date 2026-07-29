@@ -90,47 +90,24 @@ export default class PictogramaService {
     const cachedResult = await cacheService.get(cacheKey);
     if (cachedResult) return cachedResult;
 
-    const cached = await this.PictogramaRepository.searchAsync({
+    // La busqueda SIEMPRE se resuelve contra la base local, nunca contra una
+    // API externa. Es una decision de arquitectura, no una optimizacion:
+    //   - La UI no depende de que globalsymbols.com/arasaac.org esten arriba
+    //     ni de su latencia. Si se cae un proveedor, la app sigue igual.
+    //   - El catalogo entra por el job de sync mensual
+    //     (src/jobs/pictogramaSyncJob.js) y por los importadores de
+    //     scripts/, que son los UNICOS que hablan con las APIs externas.
+    //   - Cada fila ya trae su licencia y atribucion validadas al importarse,
+    //     asi que nunca se muestra algo cuya licencia no se verifico.
+    // Si un termino no da resultados, la respuesta correcta es agregarlo al
+    // importador y correr el sync, no pegarle a la red en caliente.
+    const result = await this.PictogramaRepository.searchAsync({
       search,
       category,
       language: locale,
       limit: normalizedLimit,
       targetPertenecienteId,
     });
-
-    if (!searchText && cached.length > 0) {
-      await cacheService.set(cacheKey, cached, 3600);
-      return cached;
-    }
-
-    // Busqueda en vivo: hoy solo ARASAAC hace fallback en vivo (asi
-    // funcionaba antes del refactor multi-proveedor). El catalogo de Global
-    // Symbols se trae por lote con el importador (Fase 5) y ya queda
-    // disponible en `cached` sin pegarle a la red en cada busqueda.
-    //
-    // En modo comercial (PICTOGRAM_COMMERCIAL_MODE=true) directamente NO se
-    // consulta a ARASAAC: es una licencia CC BY-NC-SA, no tiene sentido
-    // traer resultados que despues nunca se van a poder mostrar. Sin este
-    // corte, el merge de abajo los volvia a mezclar aunque el filtro de
-    // `cached` (PictogramaRepository.searchAsync) ya los hubiera excluido.
-    const pictograms = envConfig.pictogramCommercialMode
-      ? []
-      : searchText
-        ? await this.fetchArasaacPictograms(
-            `/pictograms/${encodeURIComponent(locale)}/search/${encodeURIComponent(searchText)}`,
-          ).catch(() => [])
-        : await this.fetchArasaacPictograms(`/pictograms/${encodeURIComponent(locale)}/new/${normalizedLimit}`).catch(() => []);
-
-    const normalized = pictograms.map((pictogram) => this.arasaacProvider.normalizePictogram(pictogram, locale));
-
-    await this.PictogramaRepository.upsertManyAsync(normalized);
-
-    const remote = (!category || category === 'todas' || searchText === category)
-      ? normalized
-      : normalized.filter((pictogram) => pictogram.category === String(category).toLowerCase());
-    const result = searchText
-      ? mergePictograms(cached, remote, searchText, normalizedLimit)
-      : remote.slice(0, normalizedLimit);
 
     await cacheService.set(cacheKey, result, 3600);
     return result;
@@ -148,20 +125,14 @@ export default class PictogramaService {
     const cachedResult = await cacheService.get(cacheKey);
     if (cachedResult) return cachedResult;
 
-    const cached = await this.PictogramaRepository.getByExternalIdAsync(id, locale);
-    if (cached) {
-      await cacheService.set(cacheKey, cached, 7200);
-      return cached;
+    // Igual que searchAsync: se resuelve solo contra la base. Si un id no
+    // esta importado, devuelve null y el controller responde 404 — no se sale
+    // a buscarlo a la API externa en caliente.
+    const stored = await this.PictogramaRepository.getByExternalIdAsync(id, locale);
+    if (stored) {
+      await cacheService.set(cacheKey, stored, 7200);
     }
-
-    const path = `/pictograms/${encodeURIComponent(locale)}/${encodeURIComponent(id)}`;
-    const pictogram = await this.fetchArasaacPictogram(path);
-    const normalized = pictogram ? this.arasaacProvider.normalizePictogram(pictogram, locale) : null;
-    if (normalized) {
-      await this.PictogramaRepository.upsertManyAsync([normalized]);
-      await cacheService.set(cacheKey, normalized, 7200);
-    }
-    return normalized;
+    return stored ?? null;
   }
 
   async getCategoriesAsync(language) {
