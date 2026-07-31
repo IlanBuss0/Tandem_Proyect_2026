@@ -37,6 +37,41 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+// Estado del sync guardado en su propia tabla de una sola fila, en vez de
+// inferir "cuando fue el ultimo sync" a partir de fecha_sincronizacion de los
+// pictogramas.
+//
+// Por que: fecha_sincronizacion solo se actualiza en las filas que
+// PictogramCatalogImporter realmente reescribe (ver stats.affected). Si una
+// corrida no encuentra ningun cambio upstream (el caso normal en regimen,
+// porque Mulberry/OpenMoji no actualizan seguido), NINGUNA fila se toca, asi
+// que MAX(fecha_sincronizacion) queda congelado en la fecha del ultimo cambio
+// real. Eso rompe el intervalo de 30 dias: el chequeo de 6hs siguiente ve un
+// "ultimo sync" viejo, dispara un sync completo de nuevo, ese tampoco cambia
+// nada, y asi cada 6hs para siempre en vez de cada 30 dias.
+async function ensureSyncStateTableAsync() {
+  await BD.execute(`
+    CREATE TABLE IF NOT EXISTS pictograma_sync_estado (
+      id SMALLINT PRIMARY KEY DEFAULT 1,
+      ultima_corrida TIMESTAMPTZ,
+      CONSTRAINT pictograma_sync_estado_fila_unica CHECK (id = 1)
+    )
+  `);
+}
+
+/**
+ * Marca "se hizo un chequeo/sync ahora", haya o no haya cambiado algo.
+ * Exportada para poder testear el round-trip con getLastSyncAtAsync sin tener
+ * que correr un sync completo contra Mulberry/OpenMoji de verdad.
+ */
+export async function recordSyncAttemptAsync() {
+  await ensureSyncStateTableAsync();
+  await BD.execute(`
+    INSERT INTO pictograma_sync_estado (id, ultima_corrida) VALUES (1, NOW())
+    ON CONFLICT (id) DO UPDATE SET ultima_corrida = NOW()
+  `);
+}
+
 /**
  * Corre una pasada de sincronizacion sobre todos los proveedores bulk.
  * Exportada aparte del scheduler para poder invocarla a mano desde un script.
@@ -105,25 +140,28 @@ export async function runPictogramSyncAsync({ language = 'es', force = false, lo
   // que expire solo.
   await cacheService.delByPattern('pictogram.*');
 
+  // Se registra el intento SIEMPRE, incluso si ningun proveedor tuvo cambios
+  // o si algun proveedor fallo (el error ya quedo logueado arriba, por
+  // proveedor). Es lo que le da sentido a "cada 30 dias": si se marcara solo
+  // cuando hay cambios, un mes sin novedades upstream haria que el chequeo de
+  // 6hs siguiente crea que nunca se sincronizo y vuelva a intentarlo enseguida.
+  await recordSyncAttemptAsync();
+
   return results;
 }
 
 /**
- * Devuelve cuando fue el ultimo sync, leyendo la fecha de sincronizacion mas
- * reciente de los proveedores bulk. Se usa la propia tabla de pictogramas
- * como fuente de verdad (columna fecha_sincronizacion, que ya existia) para
- * no inventar una tabla de estado nueva.
+ * Devuelve cuando fue el ultimo sync (intento, haya cambiado algo o no), leido
+ * de pictograma_sync_estado. Ver el comentario junto a recordSyncAttemptAsync
+ * para el motivo de no usar fecha_sincronizacion de los pictogramas.
  *
  * Consecuencia importante: el estado sobrevive a los reinicios. Reiniciar el
  * backend 20 veces en un dia no dispara 20 syncs.
  */
 export async function getLastSyncAtAsync() {
-  const sources = BULK_CATALOG_PROVIDERS.map((provider) => provider.key);
-  const row = await BD.queryOne(
-    `SELECT MAX(fecha_sincronizacion) AS ultima FROM pictogramas WHERE origen = ANY($1::text[])`,
-    [sources],
-  );
-  return row?.ultima ? new Date(row.ultima) : null;
+  await ensureSyncStateTableAsync();
+  const row = await BD.queryOne(`SELECT ultima_corrida FROM pictograma_sync_estado WHERE id = 1`);
+  return row?.ultima_corrida ? new Date(row.ultima_corrida) : null;
 }
 
 export function startPictogramaSyncJob() {
@@ -133,11 +171,26 @@ export function startPictogramaSyncJob() {
   const intervalDays = parsePositiveInt(process.env.PICTOGRAM_SYNC_INTERVAL_DAYS, DEFAULT_INTERVAL_DAYS);
   const intervalMs = intervalDays * 24 * 60 * 60 * 1000;
 
+  // Lock simple en memoria: evita que dos syncs completos corran a la vez en
+  // este mismo proceso. Sin esto, si una corrida se llegara a extender mas de
+  // CHECK_INTERVAL_MS (por ejemplo GitHub o Groq respondiendo lento), el
+  // siguiente chequeo periodico la ve "vencida" (todavia no se registro
+  // recordSyncAttemptAsync porque no termino) y arrancaria una segunda
+  // descarga completa en paralelo.
+  let isSyncRunning = false;
+
   const run = async () => {
+    if (isSyncRunning) {
+      console.log('[Pictogramas] Ya hay un sync en curso: se saltea esta corrida.');
+      return;
+    }
+    isSyncRunning = true;
     try {
       await runPictogramSyncAsync({ language });
     } catch (error) {
       console.error('[Pictogramas] Error en el sync programado:', error.message);
+    } finally {
+      isSyncRunning = false;
     }
   };
 

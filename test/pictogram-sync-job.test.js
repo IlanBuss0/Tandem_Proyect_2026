@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { startPictogramaSyncJob, getLastSyncAtAsync } from '../src/jobs/pictogramaSyncJob.js';
+import { startPictogramaSyncJob, getLastSyncAtAsync, recordSyncAttemptAsync } from '../src/jobs/pictogramaSyncJob.js';
 
 // Red de seguridad del sync mensual de pictogramas.
 //
@@ -101,4 +101,33 @@ test('getLastSyncAtAsync devuelve la fecha del ultimo sync (o null si no hubo)',
   if (lastSyncAt) {
     assert.ok(!Number.isNaN(lastSyncAt.getTime()), 'la fecha devuelta debe ser valida');
   }
+});
+
+// Bug real encontrado antes de activar el sync en produccion: si en una
+// corrida ningun proveedor tenia cambios, PictogramCatalogImporter no llamaba
+// a upsertManyAsync (stats.affected = 0), y como el "ultimo sync" se leia de
+// MAX(fecha_sincronizacion) de los pictogramas, esa fecha quedaba congelada
+// en el ultimo cambio real. El chequeo de 6hs siguiente veia el sync como
+// "vencido" otra vez y disparaba una descarga completa de nuevo, y asi cada
+// 6hs para siempre en vez de cada 30 dias. Ahora el estado vive en su propia
+// tabla y se marca en cada intento, haya cambios o no.
+test('getLastSyncAtAsync avanza con recordSyncAttemptAsync aunque ningun pictograma haya cambiado', async () => {
+  const before = await getLastSyncAtAsync();
+
+  await recordSyncAttemptAsync();
+  const after = await getLastSyncAtAsync();
+
+  assert.ok(after instanceof Date, 'deberia quedar una fecha registrada');
+  if (before) {
+    assert.ok(
+      after.getTime() >= before.getTime(),
+      'la fecha deberia avanzar (o quedar igual si corrio en el mismo instante), nunca retroceder',
+    );
+  }
+
+  // Un segundo intento no debe fallar por PK duplicada (es un upsert de una
+  // sola fila, no una fila nueva por corrida).
+  await recordSyncAttemptAsync();
+  const afterSecond = await getLastSyncAtAsync();
+  assert.ok(afterSecond.getTime() >= after.getTime());
 });
