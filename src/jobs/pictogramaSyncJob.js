@@ -11,7 +11,8 @@ import { translatePendingLabelsAsync, countPendingTranslationsAsync } from '../s
 // sale nunca a la red: lee solo de la base. Ver el comentario en searchAsync.
 //
 // Que hace en cada corrida:
-//   1. Baja el catalogo completo de cada proveedor bulk (Mulberry, OpenMoji).
+//   1. Baja el catalogo completo de cada proveedor bulk (Mulberry, OpenMoji,
+//      Global Symbols).
 //   2. Compara el SHA-256 de cada archivo contra metadata.assetHash en la
 //      base: lo que no cambio no se vuelve a rasterizar ni a subir.
 //   3. Rehostea lo nuevo/cambiado en nuestro storage y hace upsert.

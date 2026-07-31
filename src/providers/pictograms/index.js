@@ -21,6 +21,7 @@ export const PICTOGRAM_PROVIDERS = {
 export const BULK_CATALOG_PROVIDERS = [
   { key: 'MULBERRY', storagePrefix: 'pictogramas/mulberry' },
   { key: 'OPENMOJI', storagePrefix: 'pictogramas/openmoji' },
+  { key: 'GLOBAL_SYMBOLS', storagePrefix: 'pictogramas/global-symbols' },
 ];
 
 export function getProviderByKey(key) {

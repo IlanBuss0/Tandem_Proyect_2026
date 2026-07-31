@@ -134,7 +134,7 @@ test('DB: un re-sync con el nombre en ingles no pisa la traduccion al espanol', 
     `SELECT origen, origen_id, titulo,
             metadata->>'nameEs' AS "nameEs", metadata->>'originalName' AS "originalName"
        FROM pictogramas
-      WHERE origen IN ('MULBERRY', 'OPENMOJI')
+      WHERE origen IN ('MULBERRY', 'OPENMOJI', 'GLOBAL_SYMBOLS')
         AND metadata->>'nameEs' IS NOT NULL
         AND metadata->>'originalName' IS NOT NULL
       LIMIT 1`,

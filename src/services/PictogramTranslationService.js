@@ -70,7 +70,7 @@ export async function countPendingTranslationsAsync() {
   const row = await BD.queryOne(
     `SELECT COUNT(*)::int AS total
        FROM pictogramas
-      WHERE origen IN ('MULBERRY', 'OPENMOJI')
+      WHERE origen IN ('MULBERRY', 'OPENMOJI', 'GLOBAL_SYMBOLS')
         AND idioma = 'es'
         AND metadata->>'nameEs' IS NULL`,
   );
@@ -182,7 +182,7 @@ export async function translatePendingLabelsAsync({ limit = null, retranslate = 
   const pending = await BD.query(
     `SELECT id, origen_id, titulo, etiquetas, metadata
        FROM pictogramas
-      WHERE origen IN ('MULBERRY', 'OPENMOJI')
+      WHERE origen IN ('MULBERRY', 'OPENMOJI', 'GLOBAL_SYMBOLS')
         AND idioma = 'es'
         ${retranslate ? '' : "AND metadata->>'nameEs' IS NULL"}
       ORDER BY id

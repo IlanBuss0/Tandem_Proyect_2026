@@ -29,6 +29,35 @@ function toIso639_3(language) {
   return LANGUAGE_TO_ISO_639_3[normalized] || 'spa';
 }
 
+// Global Symbols no tiene endpoint de "catalogo completo" como Mulberry/
+// OpenMoji (que bajan un tarball/zip con todo): hay que pedirle termino por
+// termino. Se busca en INGLES (ver comentario de syncCatalog) y se reusa el
+// mismo vocabulario nucleo de CAA que ya esta en POPULAR_TITLES
+// (PictogramaRepository.js), traducido, para no mantener dos listas del
+// mismo concepto en espanol y en ingles.
+const DEFAULT_SEARCH_TERMS = [
+  'eat', 'drink', 'water', 'bathroom', 'toilet', 'wash hands', 'pain', 'hurt',
+  'help', 'yes', 'no', 'happy', 'sad', 'angry', 'scared', 'tired', 'family',
+  'mom', 'dad', 'home', 'school', 'sleep', 'get dressed', 'play', 'read',
+  'write', 'wait', 'go out', 'doctor', 'supermarket', 'bus',
+];
+
+const IMAGE_DOWNLOAD_TIMEOUT_MS = 20000;
+const DOWNLOAD_CONCURRENCY = 8;
+
+/** Corre `worker` sobre `items` con como maximo `concurrency` en paralelo. */
+async function runPool(items, concurrency, worker) {
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+}
+
 export default class GlobalSymbolsProvider {
   key = 'GLOBAL_SYMBOLS';
   commercialUseAllowed = true;
@@ -64,10 +93,17 @@ export default class GlobalSymbolsProvider {
       commercialUseAllowed: this.commercialUseAllowed,
       shareAlikeRequired: setInfo.licenseCode === 'CC-BY-SA-4.0' || setInfo.licenseCode === 'CC-BY-SA-2.0-UK',
       // Metadata util para el importador (Fase 5): de que set exacto vino,
-      // para el reporte de atribuciones agrupado por coleccion real.
+      // para el reporte de atribuciones agrupado por coleccion real, y el
+      // nombre original en ingles para que scripts/translate-catalog-labels.mjs
+      // sepa que traducir (mismo patron que Mulberry/OpenMoji).
       symbolsetId: picto.symbolset_id,
       symbolsetSlug: setInfo.slug,
       symbolsetName: setInfo.name,
+      metadata: {
+        originalName: item?.text || null,
+        symbolsetSlug: setInfo.slug,
+        symbolsetId: picto.symbolset_id,
+      },
     };
   }
 
@@ -105,9 +141,12 @@ export default class GlobalSymbolsProvider {
 
   /**
    * Recorre las colecciones aprobadas trayendo resultados para una lista
-   * amplia de terminos de busqueda (Global Symbols no expone "traeme todo").
+   * amplia de terminos de busqueda (Global Symbols no expone "traeme todo",
+   * a diferencia de Mulberry/OpenMoji que bajan un tarball/zip completo).
    *
-   * IMPORTANTE — se busca en INGLES, no en espanol. Esta fue la causa del
+   * IMPORTANTE — se busca en INGLES, no en espanol, SIEMPRE, sin importar el
+   * `language` que reciba (ese parametro es el idioma de ALMACENAMIENTO, no
+   * de busqueda: el sync mensual lo llama con 'es'). Esta fue la causa del
    * primer import fallido: buscando en espanol, las colecciones con mas
    * etiquetas hispanas son ARASAAC (bloqueada) y Blissymbolics, con lo cual
    * el 97% del catalogo importado termino siendo Blissymbolics (simbolos
@@ -116,20 +155,40 @@ export default class GlobalSymbolsProvider {
    * PiCom AI Realistic 95, Cartoon 60, HighContrast 53; Blissymbolics 12.
    *
    * Los nombres quedan en ingles y los traduce despues
-   * scripts/translate-catalog-labels.mjs.
+   * scripts/translate-catalog-labels.mjs / el paso de traduccion del sync.
+   *
+   * Cada imagen se DESCARGA y se devuelve como `svgBuffer` (mismo campo que
+   * usan Mulberry/OpenMoji) para que PictogramCatalogImporter la re-hostee en
+   * nuestro Storage — nunca se guarda solo el link a globalsymbols.com. Un
+   * pictograma cuya descarga falla se descarta de esta corrida (no rompe el
+   * resto) y se reintenta solo en el proximo sync.
    */
-  async syncCatalog({ searchTerms, language = 'en' }) {
+  async syncCatalog({ searchTerms = DEFAULT_SEARCH_TERMS, language: storageLanguage = 'es' } = {}) {
     const byId = new Map();
-    for (const term of searchTerms || []) {
-      const raw = await this.searchRaw({ language, text: term }).catch(() => []);
+    for (const term of searchTerms) {
+      const raw = await this.searchRaw({ language: 'en', text: term }).catch(() => []);
       const allowed = filterAllowedGlobalSymbolsResults(raw);
       for (const item of allowed) {
-        // Se normaliza como 'es' aunque la busqueda fue en ingles: el catalogo
-        // local es en espanol y el nombre se traduce en el paso siguiente.
-        const normalized = this.normalizePictogram(item, 'es');
+        const normalized = this.normalizePictogram(item, storageLanguage);
         if (normalized) byId.set(normalized.id, normalized);
       }
     }
-    return Array.from(byId.values());
+
+    const candidates = Array.from(byId.values());
+    const pictograms = [];
+    await runPool(candidates, DOWNLOAD_CONCURRENCY, async (pictogram) => {
+      try {
+        const response = await axiosClient.get(pictogram.imageUrl, {
+          responseType: 'arraybuffer',
+          timeout: IMAGE_DOWNLOAD_TIMEOUT_MS,
+        });
+        pictograms.push({ ...pictogram, svgBuffer: Buffer.from(response.data) });
+      } catch {
+        // Se descarta: mejor faltar un pictograma que romper todo el sync.
+        // Vuelve a intentarse solo en el proximo sync mensual.
+      }
+    });
+
+    return { pictograms };
   }
 }

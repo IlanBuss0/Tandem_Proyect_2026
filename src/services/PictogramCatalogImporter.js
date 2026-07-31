@@ -53,7 +53,7 @@ export default class PictogramCatalogImporter {
 
   /**
    * @param {object} options
-   * @param {string} options.source        valor de `origen` en la base ('MULBERRY', 'OPENMOJI')
+   * @param {string} options.source        valor de `origen` en la base ('MULBERRY', 'OPENMOJI', 'GLOBAL_SYMBOLS')
    * @param {string} options.storagePrefix carpeta en storage ('pictogramas/mulberry')
    * @param {Array}  options.pictograms    salida del provider (con svgBuffer)
    * @param {string} [options.language]
