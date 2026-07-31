@@ -2,6 +2,7 @@ import BD from '../db/BD.js';
 import PictogramCatalogImporter from '../services/PictogramCatalogImporter.js';
 import { PICTOGRAM_PROVIDERS, BULK_CATALOG_PROVIDERS } from '../providers/pictograms/index.js';
 import { cacheService } from '../services/CacheService.js';
+import { translatePendingLabelsAsync, countPendingTranslationsAsync } from '../services/PictogramTranslationService.js';
 
 // Sync mensual del catalogo de pictogramas.
 //
@@ -78,6 +79,27 @@ export async function runPictogramSyncAsync({ language = 'es', force = false, lo
     }
   }
 
+  // Traduccion de lo pendiente, en su propio try/catch: si Groq esta caido o
+  // sin cupo, un sync que ya importo bien los pictogramas (en ingles) no debe
+  // reportarse como fallido por eso. Los que queden sin traducir se marcan con
+  // metadata.nameEs IS NULL y los recoge el chequeo periodico de 6hs (ver
+  // startPictogramaSyncJob) o el proximo sync mensual.
+  try {
+    const translationStats = await translatePendingLabelsAsync({
+      log: (message) => log(`[Pictogramas] Traduccion: ${message}`),
+    });
+    if (translationStats.error) {
+      log(`[Pictogramas] Traduccion: ${translationStats.error}. Queda para el proximo chequeo.`);
+    } else if (translationStats.pending > 0) {
+      log(
+        `[Pictogramas] Traduccion: ${translationStats.translated}/${translationStats.pending} `
+        + `traducidas (${translationStats.failedBatches} lotes fallidos).`,
+      );
+    }
+  } catch (error) {
+    log(`[Pictogramas] Traduccion: ERROR - ${error.message}. Queda para el proximo chequeo.`);
+  }
+
   // Las busquedas y el listado de categorias quedan cacheados; despues de un
   // sync hay que tirar ese cache o los pictogramas nuevos no aparecen hasta
   // que expire solo.
@@ -119,6 +141,28 @@ export function startPictogramaSyncJob() {
     }
   };
 
+  // Reintenta SOLO la traduccion (no vuelve a bajar ni a importar ningun
+  // catalogo) cuando quedaron pictogramas en ingles de una corrida anterior.
+  // Se llama en cada chequeo de 6hs que no dispara un sync completo.
+  const retryPendingTranslationsIfAny = async () => {
+    try {
+      const pendingCount = await countPendingTranslationsAsync();
+      if (pendingCount === 0) return;
+
+      console.log(`[Pictogramas] Hay ${pendingCount} etiquetas sin traducir de una corrida anterior: reintentando.`);
+      const stats = await translatePendingLabelsAsync({
+        log: (message) => console.log(`[Pictogramas] Traduccion: ${message}`),
+      });
+      if (stats.error) {
+        console.log(`[Pictogramas] Traduccion: ${stats.error}. Se reintenta en el proximo chequeo.`);
+      } else {
+        console.log(`[Pictogramas] Traduccion: ${stats.translated}/${stats.pending} traducidas.`);
+      }
+    } catch (error) {
+      console.error('[Pictogramas] Error reintentando traducciones pendientes:', error.message);
+    }
+  };
+
   // OJO — no se puede usar setInterval con el intervalo real.
   //
   // setInterval/setTimeout guardan el delay en un entero de 32 bits con signo:
@@ -136,8 +180,15 @@ export function startPictogramaSyncJob() {
       const elapsedMs = lastSyncAt ? Date.now() - lastSyncAt.getTime() : Infinity;
 
       if (elapsedMs < intervalMs) {
+        // Todavia no toca el sync completo, pero igual vale la pena revisar
+        // si quedaron traducciones pendientes de una corrida anterior (por
+        // ejemplo, si Groq se quedo sin cupo diario a mitad del catalogo la
+        // ultima vez). El cupo de Groq se resetea por dia, y este chequeo
+        // corre cada 6hs, asi que lo pendiente termina traduciendose solo al
+        // otro dia, sin esperar los 30 dias hasta el proximo sync.
         const diasRestantes = ((intervalMs - elapsedMs) / 86400000).toFixed(1);
         console.log(`[Pictogramas] Todavia no corresponde sincronizar (faltan ${diasRestantes} dias).`);
+        await retryPendingTranslationsIfAny();
         return;
       }
 

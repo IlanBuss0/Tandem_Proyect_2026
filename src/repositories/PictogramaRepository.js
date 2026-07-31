@@ -612,7 +612,24 @@ export default class PictogramaRepository {
               ),
               autor = EXCLUDED.autor,
               licencia = EXCLUDED.licencia,
-              texto_busqueda = EXCLUDED.texto_busqueda,
+              -- Mismo criterio que titulo: si hay traduccion, texto_busqueda
+              -- se reconstruye a partir de ella (+ tipo + etiquetas fusionadas)
+              -- en vez de tomar el de EXCLUDED, que siempre viene armado con
+              -- el nombre en ingles del proveedor (buildSearchText() en este
+              -- mismo archivo). Sin este fix, cada sync revertia el texto de
+              -- busqueda al ingles aunque titulo ya quedara bien en espanol,
+              -- degradando el matching de frases de varias palabras.
+              texto_busqueda = LOWER(
+                COALESCE(NULLIF(pictogramas.metadata->>'nameEs', ''), EXCLUDED.titulo)
+                || ' ' || EXCLUDED.tipo || ' '
+                || COALESCE(array_to_string(
+                     ARRAY(
+                       SELECT DISTINCT e
+                       FROM unnest(EXCLUDED.etiquetas || pictogramas.etiquetas) AS e
+                       WHERE e IS NOT NULL AND e <> ''
+                     ), ' '
+                   ), '')
+              ),
               -- Se conserva nameEs al mergear: EXCLUDED.metadata trae el
               -- assetHash y el nombre original nuevos, pero no la traduccion.
               metadata = EXCLUDED.metadata

@@ -161,11 +161,19 @@ test('DB: un re-sync con el nombre en ingles no pisa la traduccion al espanol', 
   }]);
 
   const after = await BD.queryOne(
-    `SELECT titulo, metadata->>'nameEs' AS "nameEs"
+    `SELECT titulo, texto_busqueda, metadata->>'nameEs' AS "nameEs"
        FROM pictogramas WHERE origen = $1 AND origen_id = $2 AND idioma = 'es'`,
     [existing.origen, existing.origen_id],
   );
 
   assert.equal(after.titulo, existing.nameEs, 'el titulo debe seguir siendo la traduccion al espanol');
   assert.equal(after.nameEs, existing.nameEs, 'metadata.nameEs no debe perderse al mergear el metadata nuevo');
+  // Mismo bug que titulo, pero se me habia pasado la primera vez: el sync
+  // reconstruia texto_busqueda con EXCLUDED.texto_busqueda (el nombre en
+  // ingles del proveedor), asi que la busqueda por frase quedaba en ingles
+  // aunque el titulo ya se viera bien en espanol.
+  assert.ok(
+    after.texto_busqueda.includes(existing.nameEs.toLowerCase()),
+    `texto_busqueda ("${after.texto_busqueda}") deberia incluir la traduccion ("${existing.nameEs}"), no solo el nombre en ingles`,
+  );
 });

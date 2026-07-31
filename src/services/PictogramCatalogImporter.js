@@ -77,9 +77,15 @@ export default class PictogramCatalogImporter {
     await runPool(pictograms, concurrency, async (pictogram) => {
       const assetHash = sha256(pictogram.svgBuffer);
       const previous = existing.get(pictogram.id);
+      const unchanged = !force && previous?.asset_hash === assetHash && previous.url?.includes('/storage/v1/object/public/');
 
-      if (!force && previous?.asset_hash === assetHash && previous.url?.includes('/storage/v1/object/public/')) {
-        ready.push({ ...pictogram, imageUrl: previous.url, downloadUrl: previous.url, assetHash });
+      if (unchanged) {
+        // Ni se rasteriza ni se sube ni se escribe en la base: la fila de
+        // Postgres ya tiene exactamente estos datos de una corrida anterior.
+        // Antes esto igual se mandaba al upsert (una transaccion de ~5.900
+        // filas todos los meses sin necesidad), y de paso hubiera vuelto a
+        // pisar texto_busqueda con el nombre en ingles del proveedor. Ver el
+        // ON CONFLICT de upsertManyAsync para ese fix aparte.
         stats.skipped += 1;
         return;
       }
@@ -112,7 +118,9 @@ export default class PictogramCatalogImporter {
       }
     });
 
-    // Gate legal: se aplica a todo, aunque el provider ya declare su licencia.
+    // Gate legal: se aplica a todo lo NUEVO o CAMBIADO, aunque el provider ya
+    // declare su licencia. Lo sin cambios (`ready` no las incluye) ya paso
+    // este chequeo en una corrida anterior.
     const authorized = [];
     for (const pictogram of ready) {
       try {
@@ -127,7 +135,9 @@ export default class PictogramCatalogImporter {
       }
     }
 
-    stats.affected = await this.repository.upsertManyAsync(authorized);
+    // Solo se escribe en la base lo nuevo/cambiado. Con un catalogo estable
+    // (el caso comun mes a mes) esto puede ser 0 filas.
+    stats.affected = authorized.length > 0 ? await this.repository.upsertManyAsync(authorized) : 0;
     return stats;
   }
 }
