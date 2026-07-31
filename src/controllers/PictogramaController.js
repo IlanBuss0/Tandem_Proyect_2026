@@ -88,15 +88,20 @@ router.get('', authIfTargetPerteneciente, async (req, res, next) => {
       }
     }
 
-    const pictograms = await currentService.searchAsync({
+    const result = await currentService.searchAsync({
       search: req.query.search || req.query.q,
       category: req.query.category,
       language: req.query.language || req.query.lang,
       limit: req.query.limit,
+      page: req.query.page,
       targetPertenecienteId,
     });
 
-    res.status(StatusCodes.OK).json(pictograms);
+    // Compatibilidad: solo quien pide `page` explicitamente (la UI con
+    // paginacion) recibe el objeto con total/paginas. Los llamadores viejos
+    // (autocompletado de ActivityBuilder, AiPictogramStudio) no mandan `page`
+    // y siguen recibiendo el array pelado de siempre.
+    res.status(StatusCodes.OK).json(req.query.page ? result : result.items);
   } catch (error) {
     next(error);
   }

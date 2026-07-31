@@ -15,6 +15,12 @@ function normalizeLimit(value) {
   return Math.min(limit, MAX_LIMIT);
 }
 
+function normalizePage(value) {
+  const page = Number.parseInt(value, 10);
+  if (Number.isNaN(page) || page <= 0) return 1;
+  return page;
+}
+
 export function normalizeSearchText(value) {
   return String(value || '')
     .normalize('NFD')
@@ -78,15 +84,16 @@ export default class PictogramaService {
     return await this.schemaReady;
   }
 
-  async searchAsync({ search, category, language, limit, targetPertenecienteId }) {
+  async searchAsync({ search, category, language, limit, page, targetPertenecienteId }) {
     await this.ensureSchemaAsync();
 
     const locale = normalizeLanguage(language);
     const normalizedLimit = normalizeLimit(limit);
+    const normalizedPage = normalizePage(page);
     const searchText = String(search || category || '').trim();
     const normalizedCategory = String(category || '').trim().toLowerCase();
 
-    const cacheKey = `pictogram.search.${locale}.${normalizeSearchText(searchText)}.${normalizedCategory}.${normalizedLimit}${targetPertenecienteId ? `.${targetPertenecienteId}` : ''}`;
+    const cacheKey = `pictogram.search.${locale}.${normalizeSearchText(searchText)}.${normalizedCategory}.${normalizedLimit}.${normalizedPage}${targetPertenecienteId ? `.${targetPertenecienteId}` : ''}`;
     const cachedResult = await cacheService.get(cacheKey);
     if (cachedResult) return cachedResult;
 
@@ -101,13 +108,22 @@ export default class PictogramaService {
     //     asi que nunca se muestra algo cuya licencia no se verifico.
     // Si un termino no da resultados, la respuesta correcta es agregarlo al
     // importador y correr el sync, no pegarle a la red en caliente.
-    const result = await this.PictogramaRepository.searchAsync({
+    const { items, total } = await this.PictogramaRepository.searchAsync({
       search,
       category,
       language: locale,
       limit: normalizedLimit,
+      offset: (normalizedPage - 1) * normalizedLimit,
       targetPertenecienteId,
     });
+
+    const result = {
+      items,
+      total,
+      page: normalizedPage,
+      pageSize: normalizedLimit,
+      totalPages: Math.max(1, Math.ceil(total / normalizedLimit)),
+    };
 
     await cacheService.set(cacheKey, result, 3600);
     return result;

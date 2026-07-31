@@ -29,7 +29,7 @@ test('la busqueda nunca le pega a una API externa (ni con el flag comercial apag
     let remoteCalls = 0;
     let upserts = 0;
     service.ensureSchemaAsync = async () => {};
-    service.PictogramaRepository.searchAsync = async () => [localCat];
+    service.PictogramaRepository.searchAsync = async () => ({ items: [localCat], total: 1 });
     service.PictogramaRepository.upsertManyAsync = async () => { upserts += 1; return 0; };
     // Si searchAsync intentara salir a la red, estos contadores se moverian.
     service.fetchArasaacPictograms = async () => { remoteCalls += 1; return [remoteCat]; };
@@ -39,7 +39,8 @@ test('la busqueda nunca le pega a una API externa (ni con el flag comercial apag
 
     assert.equal(remoteCalls, 0, 'searchAsync no debe llamar a ninguna API externa');
     assert.equal(upserts, 0, 'searchAsync no debe escribir en la base: es solo lectura');
-    assert.deepEqual(results, [localCat]);
+    assert.deepEqual(results.items, [localCat]);
+    assert.equal(results.total, 1);
   } finally {
     envConfig.pictogramCommercialMode = previousCommercialMode;
   }

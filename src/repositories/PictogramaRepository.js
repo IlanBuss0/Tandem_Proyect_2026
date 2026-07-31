@@ -251,7 +251,7 @@ export default class PictogramaRepository {
     await BD.execute(`CREATE INDEX IF NOT EXISTS idx_favoritos_pictogramas_usuario ON favoritos_pictogramas (id_usuario, idioma, fecha_marcado DESC)`);
   };
 
-  searchAsync = async ({ search, category, language, limit, targetPertenecienteId }) => {
+  searchAsync = async ({ search, category, language, limit, offset = 0, targetPertenecienteId }) => {
     const where = ["idioma = $1"];
     // El switch de la migracion de licencias (Fase 4): en modo comercial
     // solo se descubren pictogramas con uso_comercial_permitido = true.
@@ -278,16 +278,32 @@ export default class PictogramaRepository {
       .map((item) => item.trim().toLowerCase())
       .filter((item) => item && item !== 'todas');
     const searchText = String(search || '').trim().toLowerCase();
+    // El "id ASC" final no es cosmetico: sin un desempate unico, dos
+    // pictogramas empatados en popularidad/titulo (el caso comun, la
+    // mayoria tiene todo en 0) pueden salir en cualquier orden entre
+    // corridas. Con LIMIT/OFFSET eso hace que una misma fila aparezca en
+    // dos paginas distintas, o que ninguna la muestre. Postgres no
+    // garantiza un orden estable sin un ORDER BY que desempate del todo.
     let orderBy = `
       (popularidad + descarga_total + uso_total + guardado_total) DESC,
       popularidad DESC,
-      titulo ASC
+      titulo ASC,
+      id ASC
     `;
 
     if (categories.length > 0) {
       params.push(categories);
       where.push(`tipo = ANY($${params.length})`);
     }
+
+    // Cuantos params consume el WHERE hasta aca. Se actualiza de nuevo abajo,
+    // justo despues de agregar el LIKE de busqueda (el ultimo que participa
+    // del WHERE) y ANTES de los params que solo usa el ORDER BY (exacto,
+    // prefijo, palabra completa) — esos no pueden ir en el COUNT: Postgres
+    // rechaza el bind si se le pasan mas parametros de los que la consulta
+    // realmente referencia ("bind message supplies N, but prepared
+    // statement requires M").
+    let whereParamCount = params.length;
 
     if (searchText) {
       // Todas las comparaciones van sin acentos ni ñ, de los dos lados: asi
@@ -309,6 +325,7 @@ export default class PictogramaRepository {
           WHERE ${etiquetaPlain} LIKE $${index}
         )
       )`);
+      whereParamCount = params.length;
       params.push(plainSearch);
       const exactIndex = params.length;
       params.push(`${plainSearch}%`);
@@ -334,13 +351,24 @@ export default class PictogramaRepository {
         END,
         (popularidad + descarga_total + uso_total + guardado_total) DESC,
         LENGTH(titulo) ASC,
-        titulo ASC
+        titulo ASC,
+        id ASC
       `;
     }
 
-    const shouldDeduplicateDefaults = !searchText && categories.length === 0;
-    const queryLimit = shouldDeduplicateDefaults ? limit * 3 : limit;
-    params.push(queryLimit);
+    // Total real de resultados para la paginacion ("pagina X de Y"), con el
+    // mismo WHERE que la busqueda pero sin LIMIT/OFFSET. Se usa solo la
+    // porcion de params que el WHERE realmente referencia (whereParamCount),
+    // no el array completo (que para busquedas de texto trae ademas params
+    // que solo usa el ORDER BY).
+    const countSql = `SELECT COUNT(*)::int AS total FROM pictogramas WHERE ${where.join(' AND ')}`;
+    const countRow = await BD.queryOne(countSql, params.slice(0, whereParamCount));
+    const total = countRow?.total ?? 0;
+
+    params.push(limit);
+    const limitIndex = params.length;
+    params.push(offset);
+    const offsetIndex = params.length;
     const sql = `
       SELECT id, origen, origen_id, arasaac_id, titulo, tipo, url, url_descarga,
              etiquetas, idioma, autor, licencia, popularidad, uso_total, descarga_total,
@@ -350,23 +378,11 @@ export default class PictogramaRepository {
       FROM pictogramas
       WHERE ${where.join(' AND ')}
       ORDER BY ${orderBy}
-      LIMIT $${params.length}
+      LIMIT $${limitIndex} OFFSET $${offsetIndex}
     `;
 
     const rows = await BD.query(sql, params);
-    const normalizedRows = rows.map(normalizeRow);
-
-    if (!shouldDeduplicateDefaults) return normalizedRows;
-
-    const seen = new Set();
-    return normalizedRows
-      .filter((pictogram) => {
-        const key = normalizeText(pictogram.name);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .slice(0, limit);
+    return { items: rows.map(normalizeRow), total };
   };
 
   getByExternalIdAsync = async (id, language) => {
