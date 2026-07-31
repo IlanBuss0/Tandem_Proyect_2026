@@ -1,3 +1,4 @@
+import BD from '../db/BD.js';
 import PictogramCatalogImporter from '../services/PictogramCatalogImporter.js';
 import { PICTOGRAM_PROVIDERS, BULK_CATALOG_PROVIDERS } from '../providers/pictograms/index.js';
 import { cacheService } from '../services/CacheService.js';
@@ -22,6 +23,13 @@ import { cacheService } from '../services/CacheService.js';
 //   PICTOGRAM_SYNC_LANGUAGE=es
 
 const DEFAULT_INTERVAL_DAYS = 30;
+// Cada cuanto se VERIFICA si corresponde sincronizar. Tiene que quedar bien
+// por debajo del maximo de setInterval (2^31-1 ms, ~24,9 dias); ver el
+// comentario en startPictogramaSyncJob.
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 horas
+// Demora del primer chequeo tras arrancar, para que reiniciar el backend en
+// desarrollo no dispare una descarga inmediata.
+const FIRST_CHECK_DELAY_MS = 10 * 60 * 1000; // 10 minutos
 
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -78,6 +86,24 @@ export async function runPictogramSyncAsync({ language = 'es', force = false, lo
   return results;
 }
 
+/**
+ * Devuelve cuando fue el ultimo sync, leyendo la fecha de sincronizacion mas
+ * reciente de los proveedores bulk. Se usa la propia tabla de pictogramas
+ * como fuente de verdad (columna fecha_sincronizacion, que ya existia) para
+ * no inventar una tabla de estado nueva.
+ *
+ * Consecuencia importante: el estado sobrevive a los reinicios. Reiniciar el
+ * backend 20 veces en un dia no dispara 20 syncs.
+ */
+export async function getLastSyncAtAsync() {
+  const sources = BULK_CATALOG_PROVIDERS.map((provider) => provider.key);
+  const row = await BD.queryOne(
+    `SELECT MAX(fecha_sincronizacion) AS ultima FROM pictogramas WHERE origen = ANY($1::text[])`,
+    [sources],
+  );
+  return row?.ultima ? new Date(row.ultima) : null;
+}
+
 export function startPictogramaSyncJob() {
   if (process.env.PICTOGRAM_SYNC_ENABLED !== 'true') return null;
 
@@ -93,16 +119,58 @@ export function startPictogramaSyncJob() {
     }
   };
 
-  const timer = setInterval(run, intervalMs);
+  // OJO — no se puede usar setInterval con el intervalo real.
+  //
+  // setInterval/setTimeout guardan el delay en un entero de 32 bits con signo:
+  // el maximo es 2.147.483.647 ms (~24,9 dias). 30 dias son 2.592.000.000 ms,
+  // asi que se pasa, y Node NO tira error: lo trata como 1 ms. Resultado: el
+  // sync se disparaba en loop infinito y bajaba el catalogo de Mulberry (13MB)
+  // cientos de veces por minuto en cada arranque del backend.
+  //
+  // En vez de temporizar el intervalo completo, se chequea seguido (cada 6hs,
+  // bien por debajo del limite) y se sincroniza solo si REALMENTE paso el
+  // tiempo configurado desde el ultimo sync.
+  const checkAndRunIfDue = async () => {
+    try {
+      const lastSyncAt = await getLastSyncAtAsync();
+      const elapsedMs = lastSyncAt ? Date.now() - lastSyncAt.getTime() : Infinity;
+
+      if (elapsedMs < intervalMs) {
+        const diasRestantes = ((intervalMs - elapsedMs) / 86400000).toFixed(1);
+        console.log(`[Pictogramas] Todavia no corresponde sincronizar (faltan ${diasRestantes} dias).`);
+        return;
+      }
+
+      console.log(
+        lastSyncAt
+          ? `[Pictogramas] Ultimo sync hace ${(elapsedMs / 86400000).toFixed(1)} dias: sincronizando.`
+          : '[Pictogramas] No hay ningun sync previo: sincronizando.',
+      );
+      await run();
+    } catch (error) {
+      console.error('[Pictogramas] Error verificando si corresponde sincronizar:', error.message);
+    }
+  };
+
+  const timer = setInterval(() => void checkAndRunIfDue(), CHECK_INTERVAL_MS);
   // No mantiene el proceso vivo solo por este timer.
   if (typeof timer.unref === 'function') timer.unref();
 
   if (process.env.PICTOGRAM_SYNC_ON_START === 'true') {
-    // Sin await a proposito: el arranque del server no espera a que termine
-    // de bajar los catalogos.
+    // Fuerza un sync al arrancar, sin importar cuando fue el ultimo. Sin await
+    // a proposito: el arranque del server no espera a que bajen los catalogos.
+    console.log('[Pictogramas] PICTOGRAM_SYNC_ON_START=true: forzando sync al arrancar.');
     void run();
+  } else {
+    // Primer chequeo diferido: evita que un reinicio en desarrollo dispare una
+    // descarga inmediata, y le da tiempo al server a terminar de levantar.
+    const firstCheck = setTimeout(() => void checkAndRunIfDue(), FIRST_CHECK_DELAY_MS);
+    if (typeof firstCheck.unref === 'function') firstCheck.unref();
   }
 
-  console.log(`[Pictogramas] Sync automatico activo cada ${intervalDays} dias (${BULK_CATALOG_PROVIDERS.map((p) => p.key).join(', ')}).`);
+  console.log(
+    `[Pictogramas] Sync automatico activo: cada ${intervalDays} dias `
+    + `(se verifica cada ${CHECK_INTERVAL_MS / 3600000}hs) — ${BULK_CATALOG_PROVIDERS.map((p) => p.key).join(', ')}.`,
+  );
   return timer;
 }

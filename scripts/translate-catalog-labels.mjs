@@ -23,8 +23,24 @@ import { cacheService } from '../src/services/CacheService.js';
 //   node scripts/translate-catalog-labels.mjs --retranslate   (rehace todo)
 
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL_NAME = 'llama-3.3-70b-versatile';
-const BATCH_SIZE = 50;
+// Modelo principal y de respaldo. El plan gratis de Groq limita el modelo
+// grande a 100.000 tokens POR DIA, que no alcanza para las ~5.900 etiquetas
+// del catalogo completo. Cuando se agota el cupo diario, reintentar no sirve
+// (hay que esperar al reset), asi que se cambia al modelo chico, que tiene un
+// limite diario mucho mas alto y rinde igual para traducir etiquetas de una o
+// dos palabras.
+const PRIMARY_MODEL = 'llama-3.3-70b-versatile';
+const FALLBACK_MODEL = 'llama-3.1-8b-instant';
+// Se recuerda si ya se agoto el cupo del modelo grande, para no reintentarlo
+// en cada lote una vez que se sabe que esta agotado por hoy.
+let primaryModelExhausted = false;
+// El modelo grande maneja bien lotes de 50. El chico (fallback) pierde
+// precision con listas largas: con lotes de 50 tradujo "banana bunch" como
+// "manzana en racimo". Con lotes chicos acierta mucho mas, y en una app de CAA
+// una etiqueta mal traducida es peor que una en ingles: el pictograma se usa
+// para comunicar.
+const BATCH_SIZE_PRIMARY = 50;
+const BATCH_SIZE_FALLBACK = 15;
 // Groq free tier limita por requests y por tokens por minuto. Una pausa corta
 // entre lotes evita comerse un 429 a mitad del catalogo.
 const DELAY_BETWEEN_BATCHES_MS = 2500;
@@ -55,10 +71,11 @@ function parseArgs() {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function translateBatch(apiKey, names, { attempt = 1 } = {}) {
+async function translateBatch(apiKey, names, { attempt = 1, model = null } = {}) {
+  const activeModel = model ?? (primaryModelExhausted ? FALLBACK_MODEL : PRIMARY_MODEL);
   try {
     const response = await axios.post(GROQ_CHAT_URL, {
-      model: MODEL_NAME,
+      model: activeModel,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: JSON.stringify(names) },
@@ -85,7 +102,9 @@ async function translateBatch(apiKey, names, { attempt = 1 } = {}) {
     }
 
     if (!Array.isArray(parsed) || parsed.length !== names.length) {
-      throw new Error(`se esperaban ${names.length} traducciones y llegaron ${Array.isArray(parsed) ? parsed.length : 'nada'}`);
+      const error = new Error(`se esperaban ${names.length} traducciones y llegaron ${Array.isArray(parsed) ? parsed.length : 'nada'}`);
+      error.isCountMismatch = true;
+      throw error;
     }
     return parsed.map((value, index) => {
       const clean = String(value ?? '').trim().replace(/^["']|["']$/g, '');
@@ -93,14 +112,54 @@ async function translateBatch(apiKey, names, { attempt = 1 } = {}) {
     });
   } catch (error) {
     const status = error?.response?.status;
-    // 429 = rate limit: se espera y se reintenta hasta 3 veces.
-    if (status === 429 && attempt <= 3) {
-      const wait = attempt * 15000;
-      console.log(`    rate limit, esperando ${wait / 1000}s (intento ${attempt}/3)...`);
-      await sleep(wait);
-      return translateBatch(apiKey, names, { attempt: attempt + 1 });
+    const message = error?.response?.data?.error?.message || error.message;
+
+    if (status === 429) {
+      // Hay que distinguir dos 429 distintos:
+      //   - por minuto (TPM/RPM): esperar y reintentar SI sirve.
+      //   - por dia (TPD): esperar no sirve, hay que cambiar de modelo.
+      const isDailyLimit = /per day|TPD/i.test(message);
+
+      if (isDailyLimit && activeModel === PRIMARY_MODEL) {
+        primaryModelExhausted = true;
+        console.log(`    cupo diario de ${PRIMARY_MODEL} agotado, se pasa a ${FALLBACK_MODEL}.`);
+        return translateBatch(apiKey, names, { attempt: 1, model: FALLBACK_MODEL });
+      }
+
+      if (!isDailyLimit && attempt <= 3) {
+        const wait = attempt * 15000;
+        console.log(`    rate limit por minuto, esperando ${wait / 1000}s (intento ${attempt}/3)...`);
+        await sleep(wait);
+        return translateBatch(apiKey, names, { attempt: attempt + 1, model: activeModel });
+      }
     }
-    throw new Error(error?.response?.data?.error?.message || error.message);
+
+    if (error.isCountMismatch) throw error; // lo maneja translateWithSplit
+    throw new Error(`[${activeModel}] ${message}`);
+  }
+}
+
+/**
+ * Traduce una lista partiendo el lote al medio si el modelo devuelve una
+ * cantidad de traducciones distinta a la pedida. El modelo chico
+ * (llama-3.1-8b-instant, al que se cae cuando se agota el cupo diario del
+ * grande) a veces pierde la cuenta con listas largas; con lotes mas chicos
+ * acierta. Se parte recursivamente hasta lotes de 1, donde ya no puede fallar
+ * por conteo.
+ */
+async function translateWithSplit(apiKey, names) {
+  try {
+    return await translateBatch(apiKey, names);
+  } catch (error) {
+    if (!error.isCountMismatch || names.length <= 1) throw error;
+
+    const middle = Math.floor(names.length / 2);
+    console.log(`    el modelo devolvio una cantidad distinta, se parte el lote en ${middle} + ${names.length - middle}...`);
+    const [left, right] = await Promise.all([
+      translateWithSplit(apiKey, names.slice(0, middle)),
+      translateWithSplit(apiKey, names.slice(middle)),
+    ]);
+    return [...left, ...right];
   }
 }
 
@@ -127,21 +186,25 @@ async function main() {
     process.exit(0);
   }
 
-  const totalBatches = Math.ceil(pending.length / BATCH_SIZE);
-  console.log(`A traducir: ${pending.length} etiquetas en ${totalBatches} lotes de ${BATCH_SIZE}.`);
+  console.log(`A traducir: ${pending.length} etiquetas.`);
 
   let translated = 0;
   let failedBatches = 0;
+  let offset = 0;
+  let batchNumber = 0;
 
-  for (let offset = 0; offset < pending.length; offset += BATCH_SIZE) {
-    const batch = pending.slice(offset, offset + BATCH_SIZE);
-    const batchNumber = Math.floor(offset / BATCH_SIZE) + 1;
+  while (offset < pending.length) {
+    // El tamano se decide en cada iteracion porque el modelo puede cambiar a
+    // mitad de la corrida (cuando se agota el cupo diario del grande).
+    const batchSize = primaryModelExhausted ? BATCH_SIZE_FALLBACK : BATCH_SIZE_PRIMARY;
+    const batch = pending.slice(offset, offset + batchSize);
+    batchNumber += 1;
     // Se traduce el nombre original en ingles si esta guardado; si no, el
     // titulo actual (que en la primera pasada es el ingles).
     const names = batch.map((row) => row.metadata?.originalName || row.titulo);
 
     try {
-      const spanish = await translateBatch(envConfig.groqApiKey, names);
+      const spanish = await translateWithSplit(envConfig.groqApiKey, names);
 
       await BD.transaction(async (client) => {
         for (let i = 0; i < batch.length; i += 1) {
@@ -176,13 +239,14 @@ async function main() {
 
       translated += batch.length;
       const sample = names.slice(0, 3).map((en, i) => `${en} -> ${spanish[i]}`).join(' | ');
-      console.log(`  lote ${batchNumber}/${totalBatches} ok (${translated}/${pending.length}). ${sample}`);
+      console.log(`  lote ${batchNumber}ok (${translated}/${pending.length}). ${sample}`);
     } catch (error) {
       failedBatches += 1;
-      console.warn(`  lote ${batchNumber}/${totalBatches} FALLO: ${error.message}`);
+      console.warn(`  lote ${batchNumber}FALLO: ${error.message}`);
     }
 
-    if (offset + BATCH_SIZE < pending.length) await sleep(DELAY_BETWEEN_BATCHES_MS);
+    offset += batch.length;
+    if (offset < pending.length) await sleep(DELAY_BETWEEN_BATCHES_MS);
   }
 
   // Las busquedas quedan cacheadas; hay que tirar el cache para que los

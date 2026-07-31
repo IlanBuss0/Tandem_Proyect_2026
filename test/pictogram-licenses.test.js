@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import BD from '../src/db/BD.js';
+import PictogramaRepository from '../src/repositories/PictogramaRepository.js';
 import {
   ALLOWED_LICENSES,
   BLOCKED_LICENSES,
@@ -122,4 +123,49 @@ test('DB: todo ARASAAC sigue marcado con uso_comercial_permitido=false', async (
     `SELECT COUNT(*)::int AS total FROM pictogramas WHERE origen = 'ARASAAC' AND uso_comercial_permitido = true`,
   );
   assert.equal(row.total, 0, 'ningun pictograma de ARASAAC deberia estar marcado como uso comercial permitido');
+});
+
+// El sync mensual vuelve a bajar el catalogo entero y los proveedores externos
+// mandan SIEMPRE el nombre en ingles. Sin esta proteccion en el ON CONFLICT de
+// upsertManyAsync, cada sync borraba las ~5.900 traducciones al espanol y la
+// app quedaba en ingles hasta que se volviera a traducir a mano.
+test('DB: un re-sync con el nombre en ingles no pisa la traduccion al espanol', async () => {
+  const existing = await BD.queryOne(
+    `SELECT origen, origen_id, titulo,
+            metadata->>'nameEs' AS "nameEs", metadata->>'originalName' AS "originalName"
+       FROM pictogramas
+      WHERE origen IN ('MULBERRY', 'OPENMOJI')
+        AND metadata->>'nameEs' IS NOT NULL
+        AND metadata->>'originalName' IS NOT NULL
+      LIMIT 1`,
+  );
+
+  if (!existing) {
+    // Sin catalogo traducido importado todavia no hay nada que verificar.
+    return;
+  }
+
+  const repository = new PictogramaRepository();
+  await repository.upsertManyAsync([{
+    id: existing.origen_id,
+    source: existing.origen,
+    name: existing.originalName, // como lo manda el proveedor: en ingles
+    imageUrl: 'https://ejemplo.test/pictograma.png',
+    category: 'otros',
+    tags: [],
+    language: 'es',
+    licenseCode: 'CC-BY-SA-4.0',
+    commercialUseAllowed: true,
+    shareAlikeRequired: true,
+    metadata: { assetHash: 'hash-de-prueba', originalName: existing.originalName },
+  }]);
+
+  const after = await BD.queryOne(
+    `SELECT titulo, metadata->>'nameEs' AS "nameEs"
+       FROM pictogramas WHERE origen = $1 AND origen_id = $2 AND idioma = 'es'`,
+    [existing.origen, existing.origen_id],
+  );
+
+  assert.equal(after.titulo, existing.nameEs, 'el titulo debe seguir siendo la traduccion al espanol');
+  assert.equal(after.nameEs, existing.nameEs, 'metadata.nameEs no debe perderse al mergear el metadata nuevo');
 });

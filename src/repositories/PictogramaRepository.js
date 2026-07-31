@@ -556,15 +556,33 @@ export default class PictogramaRepository {
             ON CONFLICT (origen, idioma, origen_id)
             DO UPDATE SET
               arasaac_id = EXCLUDED.arasaac_id,
-              titulo = EXCLUDED.titulo,
+              -- La traduccion al espanol NO se pisa. Los proveedores externos
+              -- (Mulberry, OpenMoji) mandan el nombre en ingles en cada sync;
+              -- si se sobreescribiera el titulo, el sync mensual borraria todo
+              -- el trabajo de scripts/translate-catalog-labels.mjs. Se conserva
+              -- metadata.nameEs como fuente de verdad del titulo traducido.
+              titulo = COALESCE(NULLIF(pictogramas.metadata->>'nameEs', ''), EXCLUDED.titulo),
               tipo = EXCLUDED.tipo,
               url = EXCLUDED.url,
               url_descarga = EXCLUDED.url_descarga,
-              etiquetas = EXCLUDED.etiquetas,
+              -- Union de etiquetas: las del proveedor mas las que agrego la
+              -- traduccion (el nombre original en ingles, para poder buscar
+              -- en los dos idiomas).
+              etiquetas = ARRAY(
+                SELECT DISTINCT e
+                FROM unnest(EXCLUDED.etiquetas || pictogramas.etiquetas) AS e
+                WHERE e IS NOT NULL AND e <> ''
+              ),
               autor = EXCLUDED.autor,
               licencia = EXCLUDED.licencia,
               texto_busqueda = EXCLUDED.texto_busqueda,
-              metadata = EXCLUDED.metadata,
+              -- Se conserva nameEs al mergear: EXCLUDED.metadata trae el
+              -- assetHash y el nombre original nuevos, pero no la traduccion.
+              metadata = EXCLUDED.metadata
+                         || COALESCE(
+                              jsonb_strip_nulls(jsonb_build_object('nameEs', pictogramas.metadata->>'nameEs')),
+                              '{}'::jsonb
+                            ),
               popularidad = EXCLUDED.popularidad,
               licencia_codigo = EXCLUDED.licencia_codigo,
               licencia_version = EXCLUDED.licencia_version,
