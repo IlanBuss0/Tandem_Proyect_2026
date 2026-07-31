@@ -39,6 +39,35 @@ const POPULAR_TITLES = [
  * interpolarlo en un patron de Postgres (`~*`). Sin esto, alguien buscando
  * "(" o "a+b" haria fallar la query con un error de regex invalida.
  */
+// Juego de caracteres para busqueda insensible a acentos y ñ.
+//
+// Por que hace falta: las etiquetas del catalogo quedaron inconsistentes — el
+// modelo que las tradujo saco los acentos en la mayoria (solo ~5% quedo con
+// tilde o ñ). Asi, buscar "baño" no encontraba "bano", y buscar "miercoles" no
+// encontraba los pocos "miércoles". Y encima el usuario escribe de las dos
+// formas. Normalizar en la CONSULTA resuelve los dos lados sin depender de que
+// los datos esten prolijos ni de instalar la extension unaccent.
+const ACCENTED_CHARS = 'áéíóúàèìòùâêîôûäëïöüñç';
+const PLAIN_CHARS = 'aeiouaeiouaeiouaeiounc';
+
+/** Envuelve una expresion SQL para compararla sin acentos ni ñ. */
+function sqlUnaccent(expression) {
+  return `TRANSLATE(LOWER(${expression}), '${ACCENTED_CHARS}', '${PLAIN_CHARS}')`;
+}
+
+/** Misma normalizacion que sqlUnaccent, del lado de JavaScript. */
+function unaccent(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[̀-ͯ]/g, '') // por si viene en forma descompuesta
+    .split('')
+    .map((char) => {
+      const index = ACCENTED_CHARS.indexOf(char);
+      return index === -1 ? char : PLAIN_CHARS[index];
+    })
+    .join('');
+}
+
 function escapeRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -261,38 +290,46 @@ export default class PictogramaRepository {
     }
 
     if (searchText) {
-      params.push(`%${searchText}%`);
+      // Todas las comparaciones van sin acentos ni ñ, de los dos lados: asi
+      // "baño" encuentra "bano" y "miercoles" encuentra "miércoles". Ver el
+      // comentario de sqlUnaccent para el porque.
+      const plainSearch = unaccent(searchText);
+      const tituloPlain = sqlUnaccent('titulo');
+      const busquedaPlain = sqlUnaccent('texto_busqueda');
+      const etiquetaPlain = sqlUnaccent('etiqueta');
+
+      params.push(`%${plainSearch}%`);
       const index = params.length;
       where.push(`(
-        LOWER(titulo) LIKE $${index}
-        OR LOWER(texto_busqueda) LIKE $${index}
+        ${tituloPlain} LIKE $${index}
+        OR ${busquedaPlain} LIKE $${index}
         OR EXISTS (
           SELECT 1
           FROM unnest(etiquetas) AS etiqueta
-          WHERE LOWER(etiqueta) LIKE $${index}
+          WHERE ${etiquetaPlain} LIKE $${index}
         )
       )`);
-      params.push(searchText);
+      params.push(plainSearch);
       const exactIndex = params.length;
-      params.push(`${searchText}%`);
+      params.push(`${plainSearch}%`);
       const prefixIndex = params.length;
       // Coincidencia por PALABRA COMPLETA (\y = word boundary de Postgres).
       // Sin este nivel, buscar "agua" devolvia primero "country Paraguay" y
       // "flag Nicaragua", porque el substring esta ahi adentro y quedaba
       // empatado con todo lo demas, decidiendose por orden alfabetico.
       // Se escapan los metacaracteres de regex del termino buscado.
-      params.push(escapeRegex(searchText));
+      params.push(escapeRegex(plainSearch));
       const wordIndex = params.length;
       orderBy = `
         CASE
-          WHEN LOWER(titulo) = $${exactIndex} THEN 0
-          WHEN LOWER(titulo) LIKE $${prefixIndex} THEN 1
-          WHEN titulo ~* ('\\y' || $${wordIndex} || '\\y') THEN 2
+          WHEN ${tituloPlain} = $${exactIndex} THEN 0
+          WHEN ${tituloPlain} LIKE $${prefixIndex} THEN 1
+          WHEN ${tituloPlain} ~ ('\\y' || $${wordIndex} || '\\y') THEN 2
           WHEN EXISTS (
             SELECT 1 FROM unnest(etiquetas) AS etiqueta
-            WHERE LOWER(etiqueta) = $${exactIndex}
+            WHERE ${etiquetaPlain} = $${exactIndex}
           ) THEN 3
-          WHEN LOWER(titulo) LIKE $${index} THEN 4
+          WHEN ${tituloPlain} LIKE $${index} THEN 4
           ELSE 5
         END,
         (popularidad + descarga_total + uso_total + guardado_total) DESC,
