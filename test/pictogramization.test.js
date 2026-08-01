@@ -4,6 +4,7 @@ import test from 'node:test';
 import { scoreConceptMatch, pickBestMatch } from '../src/modules/pictograms/concept-matching.js';
 import { extractConceptsHeuristic } from '../src/modules/pictograms/concept-extraction.js';
 import PictogramizationService from '../src/services/PictogramizationService.js';
+import PersonalVocabularyStore from '../src/modules/pictograms/personal-vocabulary.js';
 import { envConfig } from '../src/configs/env.config.js';
 
 // Motor de pictogramizacion (Sesion 1): frase -> pictograma, sin que el
@@ -203,4 +204,88 @@ test('pictogramizeAsync: array vacio de phrases devuelve resultados vacios sin l
 
   assert.deepEqual(result.results, []);
   assert.equal(called, false);
+});
+
+// --- Vocabulario personal (Sesion 2) ---
+// Un texto de paso que el usuario ya resolvio a mano no vuelve a pasar por
+// Groq ni por el catalogo: se sirve directo del vocabulario, con
+// matchedOn:'vocabulario-personal'.
+
+test('personal-vocabulary: getAsync sin userId no pega a la BD y devuelve {}', async () => {
+  const store = new PersonalVocabularyStore();
+  store.ConfiguracionUsuarioService.getByUsuarioAndClaveAsync = async () => { throw new Error('no deberia llamarse'); };
+  assert.deepEqual(await store.getAsync(null), {});
+});
+
+test('personal-vocabulary: rememberAsync crea la config si no existia', async () => {
+  const store = new PersonalVocabularyStore();
+  let created = null;
+  store.ConfiguracionUsuarioService.getByUsuarioAndClaveAsync = async () => null;
+  store.ConfiguracionUsuarioService.createAsync = async (entity) => { created = entity; return 1; };
+
+  await store.rememberAsync(7, 'Lavarse los dientes', 'picto-1');
+
+  assert.equal(created.id_usuario, 7);
+  assert.deepEqual(JSON.parse(created.valor), { 'lavarse los dientes': 'picto-1' });
+});
+
+test('personal-vocabulary: rememberAsync mergea con el vocabulario existente en vez de pisarlo', async () => {
+  const store = new PersonalVocabularyStore();
+  let updated = null;
+  store.ConfiguracionUsuarioService.getByUsuarioAndClaveAsync = async () => (
+    { id: 99, id_usuario: 7, valor: JSON.stringify({ ducharse: 'picto-0' }) }
+  );
+  store.ConfiguracionUsuarioService.updateAsync = async (entity) => { updated = entity; return 1; };
+
+  await store.rememberAsync(7, 'Lavarse los dientes', 'picto-1');
+
+  assert.equal(updated.id, 99);
+  assert.deepEqual(JSON.parse(updated.valor), { ducharse: 'picto-0', 'lavarse los dientes': 'picto-1' });
+});
+
+test('pictogramizeAsync: un texto en el vocabulario personal no llama a Groq ni al catalogo', async () => {
+  const service = new PictogramizationService();
+  let groqCalls = 0;
+  let searchCalls = 0;
+  service.extractConceptsAsync = async () => { groqCalls += 1; return { concepts: [[]], usedGroq: true, degraded: false, model: 'x' }; };
+  service.PictogramaService.searchAsync = async () => { searchCalls += 1; return { items: [], total: 0 }; };
+  service.PictogramaService.getByIdAsync = async (id) => ({ id, name: 'dientes', imageUrl: 'x', source: 'MULBERRY' });
+  service.PersonalVocabularyStore.getAsync = async () => ({ 'lavarse los dientes': 'picto-1' });
+
+  const result = await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'Lavarse los dientes' }], userId: 7 });
+
+  assert.equal(groqCalls, 0);
+  assert.equal(searchCalls, 0);
+  assert.equal(result.results[0].confidence, 'alta');
+  assert.equal(result.results[0].matchedOn, 'vocabulario-personal');
+  assert.equal(result.results[0].pictogram.id, 'picto-1');
+});
+
+test('pictogramizeAsync: mezcla de un texto en vocabulario y otro nuevo resuelve cada uno por su via', async () => {
+  const service = new PictogramizationService();
+  service.extractConceptsAsync = async (texts) => ({ concepts: texts.map(() => ['ducharse']), usedGroq: true, degraded: false, model: 'x' });
+  service.PictogramaService.searchAsync = buildCatalog({ ducharse: [{ id: 'auto-1', name: 'ducharse', imageUrl: 'x', source: 'MULBERRY', tags: [] }] });
+  service.PictogramaService.getByIdAsync = async (id) => ({ id, name: 'dientes', imageUrl: 'x', source: 'MULBERRY' });
+  service.PersonalVocabularyStore.getAsync = async () => ({ 'lavarse los dientes': 'picto-1' });
+
+  const result = await service.pictogramizeAsync({
+    phrases: [{ id: '1', text: 'Lavarse los dientes' }, { id: '2', text: 'Ducharse' }],
+    userId: 7,
+  });
+
+  assert.equal(result.results[0].matchedOn, 'vocabulario-personal');
+  assert.equal(result.results[0].pictogram.id, 'picto-1');
+  assert.equal(result.results[1].pictogram.id, 'auto-1');
+});
+
+test('pictogramizeAsync: si el pictograma del vocabulario ya no existe, resuelve normal en vez de romper', async () => {
+  const service = new PictogramizationService();
+  service.extractConceptsAsync = async () => ({ concepts: [['ducharse']], usedGroq: true, degraded: false, model: 'x' });
+  service.PictogramaService.searchAsync = buildCatalog({ ducharse: [{ id: 'auto-1', name: 'ducharse', imageUrl: 'x', source: 'MULBERRY', tags: [] }] });
+  service.PictogramaService.getByIdAsync = async () => null;
+  service.PersonalVocabularyStore.getAsync = async () => ({ ducharse: 'picto-borrado' });
+
+  const result = await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'Ducharse' }], userId: 7 });
+
+  assert.equal(result.results[0].pictogram.id, 'auto-1');
 });

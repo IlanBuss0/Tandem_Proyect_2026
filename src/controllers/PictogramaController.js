@@ -9,11 +9,13 @@ import { PERTENECIENTE_PERMISSIONS } from '../modules/security/permissions.const
 import AiPictogramService from '../services/AiPictogramService.js';
 import { upload } from '../middlewares/upload.middleware.js';
 import PictogramizationService, { MAX_PHRASES_PER_REQUEST } from '../services/PictogramizationService.js';
+import PersonalVocabularyStore from '../modules/pictograms/personal-vocabulary.js';
 
 const router = Router();
 const currentService = new PictogramaService();
 const aiService = new AiPictogramService();
 const pictogramizationService = new PictogramizationService();
+const personalVocabularyStore = new PersonalVocabularyStore();
 
 const authIfTargetPerteneciente = (req, res, next) => {
   const targetPertenecienteId = req.query.targetPertenecienteId || req.query.id_perteneciente_destino;
@@ -108,9 +110,28 @@ router.post('/pictogramize', authMiddleware, csrfMiddleware, async (req, res, ne
       language,
       minConfidence,
       targetPertenecienteId: targetPertenecienteId || null,
+      userId: req.user.id,
     });
 
     res.status(StatusCodes.OK).json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Vocabulario personal (Sesion 2): cuando el perteneciente elige un
+// pictograma a mano para un paso, se recuerda para ese texto exacto. La
+// proxima vez que aparezca el mismo texto, /pictogramize lo devuelve directo
+// sin gastar Groq ni volver a buscar en el catalogo.
+router.post('/vocabulary', authMiddleware, csrfMiddleware, async (req, res, next) => {
+  try {
+    const { text, pictogramId } = req.body || {};
+    if (typeof text !== 'string' || !text.trim() || !pictogramId) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: 'text y pictogramId son obligatorios.' });
+    }
+
+    await personalVocabularyStore.rememberAsync(req.user.id, text, pictogramId);
+    res.status(StatusCodes.OK).json({ message: 'Vocabulario actualizado.' });
   } catch (error) {
     next(error);
   }

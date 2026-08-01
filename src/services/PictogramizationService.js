@@ -3,6 +3,7 @@ import { normalizeSearchText } from './PictogramaService.js';
 import { cacheService } from './CacheService.js';
 import { extractConceptsAsync, MAX_PHRASES_PER_REQUEST } from '../modules/pictograms/concept-extraction.js';
 import { pickBestMatch } from '../modules/pictograms/concept-matching.js';
+import PersonalVocabularyStore from '../modules/pictograms/personal-vocabulary.js';
 
 // Unica responsabilidad de este servicio: orquestar "frase -> pictograma".
 // No sabe COMO se extraen conceptos (concept-extraction.js) ni COMO se
@@ -45,6 +46,7 @@ function memoSet(key, value) {
 export default class PictogramizationService {
   constructor() {
     this.PictogramaService = new PictogramaService();
+    this.PersonalVocabularyStore = new PersonalVocabularyStore();
     // Asignado en el constructor (no llamado directo del import) para poder
     // mockearlo por instancia en los tests, mismo patron que
     // `service.PictogramaRepository.searchAsync = async () => ...` en el
@@ -60,18 +62,60 @@ export default class PictogramizationService {
    * @param {string} [params.language]
    * @param {string|null} [params.targetPertenecienteId]
    * @param {'alta'|'media'} [params.minConfidence]
+   * @param {number|string|null} [params.userId] - para el vocabulario personal (Sesion 2)
    * @returns {Promise<{
    *   results: Array<{ id, text, concepts: string[], pictogram: object|null, confidence: 'alta'|'media'|'ninguna', matchedOn: string|null }>,
    *   engine: { model: string|null, usedGroq: boolean, degraded: boolean }
    * }>}
    */
-  async pictogramizeAsync({ phrases, language = 'es', targetPertenecienteId = null, minConfidence = 'media' }) {
-    const items = (Array.isArray(phrases) ? phrases : [])
+  async pictogramizeAsync({ phrases, language = 'es', targetPertenecienteId = null, minConfidence = 'media', userId = null }) {
+    const allItems = (Array.isArray(phrases) ? phrases : [])
       .map((p, index) => (typeof p === 'string' ? { id: String(index), text: p } : p))
       .filter((p) => p && typeof p.text === 'string' && p.text.trim());
 
-    if (items.length === 0) {
+    if (allItems.length === 0) {
       return { results: [], engine: { model: null, usedGroq: false, degraded: false } };
+    }
+
+    // Vocabulario personal: si el usuario ya eligio a mano un pictograma para
+    // este texto exacto, se usa directo. No hace falta Groq ni el catalogo
+    // de nuevo — ademas de mas preciso, cuida la cuota diaria.
+    const vocabulary = await this.PersonalVocabularyStore.getAsync(userId);
+    const vocabularyResults = new Map();
+    const pendingVocabularyIds = new Set();
+    for (const item of allItems) {
+      const pictogramId = vocabulary[normalizeSearchText(item.text)];
+      if (pictogramId) pendingVocabularyIds.add(pictogramId);
+    }
+    if (pendingVocabularyIds.size > 0) {
+      const pictogramsById = new Map();
+      await Promise.all(Array.from(pendingVocabularyIds).map(async (id) => {
+        const pictogram = await this.PictogramaService.getByIdAsync(id, language);
+        if (pictogram) pictogramsById.set(id, pictogram);
+      }));
+      for (const item of allItems) {
+        const pictogramId = vocabulary[normalizeSearchText(item.text)];
+        const pictogram = pictogramId && pictogramsById.get(pictogramId);
+        if (pictogram) {
+          vocabularyResults.set(item.id, {
+            id: item.id,
+            text: item.text,
+            concepts: [],
+            pictogram: { id: pictogram.id, name: pictogram.name, imageUrl: pictogram.imageUrl, source: pictogram.source },
+            confidence: 'alta',
+            matchedOn: 'vocabulario-personal',
+          });
+        }
+      }
+    }
+
+    const items = allItems.filter((item) => !vocabularyResults.has(item.id));
+
+    if (items.length === 0) {
+      return {
+        results: allItems.map((item) => vocabularyResults.get(item.id)),
+        engine: { model: null, usedGroq: false, degraded: false },
+      };
     }
 
     // Dedupe de texto: dos pasos con el mismo titulo (o el mismo paso en dos
@@ -122,7 +166,8 @@ export default class PictogramizationService {
       candidatesByConcept.set(concept, found);
     }));
 
-    const results = items.map((item) => {
+    const resolvedResults = new Map(vocabularyResults);
+    for (const item of items) {
       const uniqueIndex = textToIndex.get(normalizeSearchText(item.text));
       const concepts = conceptsByUniqueText[uniqueIndex] || [];
       const best = pickBestMatch(concepts, candidatesByConcept);
@@ -130,10 +175,11 @@ export default class PictogramizationService {
       const meetsMinConfidence = best && (minConfidence === 'media' || best.confidence === 'alta');
 
       if (!meetsMinConfidence) {
-        return { id: item.id, text: item.text, concepts, pictogram: null, confidence: 'ninguna', matchedOn: null };
+        resolvedResults.set(item.id, { id: item.id, text: item.text, concepts, pictogram: null, confidence: 'ninguna', matchedOn: null });
+        continue;
       }
 
-      return {
+      resolvedResults.set(item.id, {
         id: item.id,
         text: item.text,
         concepts,
@@ -145,9 +191,9 @@ export default class PictogramizationService {
         },
         confidence: best.confidence,
         matchedOn: best.matchedOn,
-      };
-    });
+      });
+    }
 
-    return { results, engine: engineInfo };
+    return { results: allItems.map((item) => resolvedResults.get(item.id)), engine: engineInfo };
   }
 }
