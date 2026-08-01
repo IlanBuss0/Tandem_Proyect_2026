@@ -1,6 +1,10 @@
 import axiosClient from '../../modules/axios/axiosClient.js';
 import { normalizeExternalCategory } from './categoryMapper.js';
-import { GLOBAL_SYMBOLS_ALLOWED_SETS, filterAllowedGlobalSymbolsResults } from '../../modules/pictograms/license-whitelist.js';
+import {
+  GLOBAL_SYMBOLS_ALLOWED_SETS,
+  GLOBAL_SYMBOLS_REDUNDANT_SETS,
+  filterAllowedGlobalSymbolsResults,
+} from '../../modules/pictograms/license-whitelist.js';
 
 // globalsymbols.com/api/v1 — publica, SIN autenticacion, gratis. Cubre 19
 // colecciones aprobadas (Mulberry, PiCom, OCHA, OpenMoji, etc.) con una sola
@@ -169,6 +173,10 @@ export default class GlobalSymbolsProvider {
       const raw = await this.searchRaw({ language: 'en', text: term }).catch(() => []);
       const allowed = filterAllowedGlobalSymbolsResults(raw);
       for (const item of allowed) {
+        // Mulberry y OpenMoji ya entran completos por su importador directo:
+        // traerlos tambien por aca duplicaba el mismo dibujo con otro
+        // origen_id. Ver GLOBAL_SYMBOLS_REDUNDANT_SETS.
+        if (GLOBAL_SYMBOLS_REDUNDANT_SETS.has(item?.picto?.symbolset_id)) continue;
         const normalized = this.normalizePictogram(item, storageLanguage);
         if (normalized) byId.set(normalized.id, normalized);
       }

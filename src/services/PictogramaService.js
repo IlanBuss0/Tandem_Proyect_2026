@@ -4,6 +4,8 @@ import { cacheService } from './CacheService.js';
 import ArasaacProvider from '../providers/pictograms/ArasaacProvider.js';
 import { PICTOGRAM_PROVIDERS } from '../providers/pictograms/index.js';
 import { envConfig } from '../configs/env.config.js';
+import { getVisualStyleLabel } from '../modules/pictograms/visual-styles.js';
+import { getCollectionLabel } from '../modules/pictograms/license-whitelist.js';
 
 const DEFAULT_LANGUAGE = 'es';
 const DEFAULT_LIMIT = 48;
@@ -84,7 +86,7 @@ export default class PictogramaService {
     return await this.schemaReady;
   }
 
-  async searchAsync({ search, category, language, limit, page, targetPertenecienteId }) {
+  async searchAsync({ search, category, style, collection, language, limit, page, targetPertenecienteId }) {
     await this.ensureSchemaAsync();
 
     const locale = normalizeLanguage(language);
@@ -92,8 +94,12 @@ export default class PictogramaService {
     const normalizedPage = normalizePage(page);
     const searchText = String(search || category || '').trim();
     const normalizedCategory = String(category || '').trim().toLowerCase();
+    const normalizedStyle = String(style || '').trim().toLowerCase();
+    const normalizedCollection = String(collection || '').trim().toLowerCase();
 
-    const cacheKey = `pictogram.search.${locale}.${normalizeSearchText(searchText)}.${normalizedCategory}.${normalizedLimit}.${normalizedPage}${targetPertenecienteId ? `.${targetPertenecienteId}` : ''}`;
+    const cacheKey = `pictogram.search.${locale}.${normalizeSearchText(searchText)}.${normalizedCategory}`
+      + `.${normalizedStyle}.${normalizedCollection}`
+      + `.${normalizedLimit}.${normalizedPage}${targetPertenecienteId ? `.${targetPertenecienteId}` : ''}`;
     const cachedResult = await cacheService.get(cacheKey);
     if (cachedResult) return cachedResult;
 
@@ -111,6 +117,8 @@ export default class PictogramaService {
     const { items, total } = await this.PictogramaRepository.searchAsync({
       search,
       category,
+      style,
+      collection,
       language: locale,
       limit: normalizedLimit,
       offset: (normalizedPage - 1) * normalizedLimit,
@@ -161,6 +169,32 @@ export default class PictogramaService {
     const categories = await this.PictogramaRepository.getCategoriesAsync(locale);
     await cacheService.set(cacheKey, categories, 86400);
     return categories;
+  }
+
+  /**
+   * Opciones del panel de filtros: categorias, estilos visuales y colecciones,
+   * cada una con su conteo real. Se resuelve de una sola llamada para que la
+   * UI no tenga que pedir tres endpoints ni hardcodear listas que se
+   * desactualizan con cada sync.
+   */
+  async getFilterOptionsAsync(language) {
+    await this.ensureSchemaAsync();
+    const locale = normalizeLanguage(language);
+    const cacheKey = `pictogram.filters.${locale}.${envConfig.pictogramCommercialMode ? 'commercial' : 'all'}`;
+    const cached = await cacheService.get(cacheKey);
+    if (cached) return cached;
+
+    const { categories, styles, collections } = await this.PictogramaRepository.getFilterOptionsAsync(locale);
+
+    const result = {
+      // La categoria ya viene en espanol desde el importador.
+      categories: categories.map((row) => ({ id: row.id, name: row.id, total: row.total })),
+      styles: styles.map((row) => ({ id: row.id, name: getVisualStyleLabel(row.id), total: row.total })),
+      collections: collections.map((row) => ({ id: row.id, name: getCollectionLabel(row.id), total: row.total })),
+    };
+
+    await cacheService.set(cacheKey, result, 86400);
+    return result;
   }
 
   async getAttributionsAsync() {

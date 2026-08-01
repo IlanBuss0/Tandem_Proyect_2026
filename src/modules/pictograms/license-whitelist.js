@@ -223,6 +223,24 @@ export const GLOBAL_SYMBOLS_ALLOWED_SETS = new Map([
   }],
 ]);
 
+// Colecciones que SI son legales y utiles, pero que NO hay que traer por
+// Global Symbols porque ya se importan completas y directo de su repo oficial
+// (MulberryProvider / OpenMojiProvider bajan un tarball/zip con TODO el set).
+//
+// Sin este filtro entraban dos veces: 26 pictogramas de Mulberry y 101 de
+// OpenMoji quedaron duplicados en la base — el mismo dibujo con dos
+// origen_id distintos ('mulberry:eat' y 'mulberry:49191'), apareciendo
+// repetido en cada busqueda. Via Global Symbols siempre va a llegar un
+// subconjunto peor: solo lo que matchea los terminos de busqueda, y sin el
+// CSV de categorias/tags que trae el repo oficial.
+//
+// Se dejan igual en GLOBAL_SYMBOLS_ALLOWED_SETS porque su licencia es
+// correcta: la exclusion es por REDUNDANCIA de origen, no por licencia.
+export const GLOBAL_SYMBOLS_REDUNDANT_SETS = new Map([
+  [13, { slug: 'mulberry', importedBy: 'MulberryProvider' }],
+  [83, { slug: 'openmoji', importedBy: 'OpenMojiProvider' }],
+]);
+
 // IDs de symbolset explicitamente excluidos, documentados para que nadie los
 // agregue "por accidente" en una futura edicion de este archivo.
 //
@@ -273,6 +291,34 @@ export function assertLicenseAllowed(asset) {
   }
 
   return true;
+}
+
+// Nombre lindo de las colecciones que NO vienen de Global Symbols (esas ya
+// traen su `name` en GLOBAL_SYMBOLS_ALLOWED_SETS). La clave es el `origen` en
+// minusculas, que es como lo calcula COLLECTION_SQL en PictogramaRepository.
+const OWN_COLLECTION_LABELS = Object.freeze({
+  mulberry: 'Mulberry Symbols',
+  openmoji: 'OpenMoji',
+  tandem_ai: 'Creados en Tándem',
+  arasaac: 'ARASAAC',
+  tabler: 'Tabler Icons',
+});
+
+/**
+ * Nombre para mostrar de una coleccion, a partir de su slug.
+ * Si no se conoce, se devuelve el slug convertido en algo legible en vez de
+ * un identificador crudo con guiones.
+ */
+export function getCollectionLabel(slug) {
+  const key = String(slug || '').trim().toLowerCase();
+  if (!key) return 'Otra colección';
+  if (OWN_COLLECTION_LABELS[key]) return OWN_COLLECTION_LABELS[key];
+
+  for (const [, info] of GLOBAL_SYMBOLS_ALLOWED_SETS) {
+    if (info.slug === key) return info.name;
+  }
+
+  return key.replace(/-/g, ' ').replace(/^./, (char) => char.toUpperCase());
 }
 
 /**

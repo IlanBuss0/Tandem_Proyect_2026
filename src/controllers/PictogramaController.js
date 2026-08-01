@@ -91,6 +91,8 @@ router.get('', authIfTargetPerteneciente, async (req, res, next) => {
     const result = await currentService.searchAsync({
       search: req.query.search || req.query.q,
       category: req.query.category,
+      style: req.query.style,
+      collection: req.query.collection,
       language: req.query.language || req.query.lang,
       limit: req.query.limit,
       page: req.query.page,
@@ -111,6 +113,18 @@ router.get('/attributions', async (req, res) => {
   try {
     const attributions = await currentService.getAttributionsAsync();
     res.status(StatusCodes.OK).json(attributions);
+  } catch (error) {
+    console.log(error);
+    res.status(StatusCodes.BAD_GATEWAY).json({ message: error.message });
+  }
+});
+
+// Todas las opciones del panel de filtros (categorias, estilos visuales y
+// colecciones) con su conteo real, en una sola llamada.
+router.get('/filters', async (req, res) => {
+  try {
+    const filters = await currentService.getFilterOptionsAsync(req.query.language || req.query.lang);
+    res.status(StatusCodes.OK).json(filters);
   } catch (error) {
     console.log(error);
     res.status(StatusCodes.BAD_GATEWAY).json({ message: error.message });
