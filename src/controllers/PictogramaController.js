@@ -8,10 +8,12 @@ import { csrfMiddleware } from '../middlewares/csrf.middleware.js';
 import { PERTENECIENTE_PERMISSIONS } from '../modules/security/permissions.constants.js';
 import AiPictogramService from '../services/AiPictogramService.js';
 import { upload } from '../middlewares/upload.middleware.js';
+import PictogramizationService, { MAX_PHRASES_PER_REQUEST } from '../services/PictogramizationService.js';
 
 const router = Router();
 const currentService = new PictogramaService();
 const aiService = new AiPictogramService();
+const pictogramizationService = new PictogramizationService();
 
 const authIfTargetPerteneciente = (req, res, next) => {
   const targetPertenecienteId = req.query.targetPertenecienteId || req.query.id_perteneciente_destino;
@@ -76,6 +78,42 @@ router.get('/ai/moderation', authMiddleware, async (req, res, next) => {
 
 router.post('/ai/moderation/:id/review', authMiddleware, csrfMiddleware, async (req, res, next) => {
   try { res.json(await aiService.reviewAsync(req.params.id, req.user.id, req.body || {})); } catch (error) { next(error); }
+});
+
+// Motor de pictogramizacion (Sesion 1): frase -> pictograma, sin que nadie
+// tenga que escribir ni elegir nada. Consume cuota de Groq, por eso requiere
+// auth (no puede quedar anonima). Nunca devuelve 5xx por culpa de Groq: si
+// no hay API key o Groq esta caido, degrada al heuristico y responde 200
+// igual (ver engine.degraded en la respuesta).
+router.post('/pictogramize', authMiddleware, csrfMiddleware, async (req, res, next) => {
+  try {
+    const { phrases, language, minConfidence, targetPertenecienteId } = req.body || {};
+
+    if (!Array.isArray(phrases) || phrases.length === 0) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: 'phrases es obligatorio y no puede estar vacio.' });
+    }
+    if (phrases.length > MAX_PHRASES_PER_REQUEST) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: `phrases no puede tener mas de ${MAX_PHRASES_PER_REQUEST} elementos.` });
+    }
+
+    if (targetPertenecienteId) {
+      const targetIds = String(targetPertenecienteId).split(',').map(Number).filter(Boolean);
+      for (const targetId of targetIds) {
+        await AuthorizationService.assertCanReadPertenecienteResource(req.user.id, targetId);
+      }
+    }
+
+    const result = await pictogramizationService.pictogramizeAsync({
+      phrases,
+      language,
+      minConfidence,
+      targetPertenecienteId: targetPertenecienteId || null,
+    });
+
+    res.status(StatusCodes.OK).json(result);
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get('', authIfTargetPerteneciente, async (req, res, next) => {
