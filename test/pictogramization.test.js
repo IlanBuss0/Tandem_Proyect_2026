@@ -5,6 +5,7 @@ import { scoreConceptMatch, pickBestMatch } from '../src/modules/pictograms/conc
 import { extractConceptsHeuristic } from '../src/modules/pictograms/concept-extraction.js';
 import PictogramizationService from '../src/services/PictogramizationService.js';
 import PersonalVocabularyStore from '../src/modules/pictograms/personal-vocabulary.js';
+import StylePreferenceStore from '../src/modules/pictograms/style-preference.js';
 import { envConfig } from '../src/configs/env.config.js';
 
 // Motor de pictogramizacion (Sesion 1): frase -> pictograma, sin que el
@@ -86,6 +87,22 @@ test('pickBestMatch: entre dos "media" gana el titulo mas corto', () => {
   // ambos matchean via "titulo-prefijo" con el mismo score (0.7): desempata el mas corto
   const best = pickBestMatch(['mesa'], candidatesByConcept);
   assert.equal(best.pictogram.id, 'corto');
+});
+
+test('pickBestMatch: ante un empate de score, gana el estilo visual preferido', () => {
+  const candidatesByConcept = new Map([
+    ['agua', [
+      { id: 'ilustracion', name: 'agua', tags: [], visualStyle: 'ilustracion' },
+      { id: 'realista', name: 'agua', tags: [], visualStyle: 'realista' },
+    ]],
+  ]);
+  // ambos son "alta" por titulo exacto con el mismo score: sin preferencia
+  // gana el primero encontrado, con preferencia gana el del estilo pedido
+  const sinPreferencia = pickBestMatch(['agua'], candidatesByConcept);
+  assert.equal(sinPreferencia.pictogram.id, 'ilustracion');
+
+  const conPreferencia = pickBestMatch(['agua'], candidatesByConcept, 'realista');
+  assert.equal(conPreferencia.pictogram.id, 'realista');
 });
 
 test('pickBestMatch: sin ningun match devuelve null', () => {
@@ -288,4 +305,49 @@ test('pictogramizeAsync: si el pictograma del vocabulario ya no existe, resuelve
   const result = await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'Ducharse' }], userId: 7 });
 
   assert.equal(result.results[0].pictogram.id, 'auto-1');
+});
+
+// --- Preferencia de estilo visual (Sesion 2) ---
+
+test('style-preference: sin elecciones previas devuelve null', async () => {
+  const store = new StylePreferenceStore();
+  store.ConfiguracionUsuarioService.getByUsuarioAndClaveAsync = async () => null;
+  assert.equal(await store.getPreferredStyleAsync(7), null);
+});
+
+test('style-preference: devuelve el estilo mas elegido, no el ultimo', async () => {
+  const store = new StylePreferenceStore();
+  store.ConfiguracionUsuarioService.getByUsuarioAndClaveAsync = async () => (
+    { valor: JSON.stringify({ ilustracion: 2, realista: 5 }) }
+  );
+  assert.equal(await store.getPreferredStyleAsync(7), 'realista');
+});
+
+test('style-preference: registerChoiceAsync acumula en vez de pisar', async () => {
+  const store = new StylePreferenceStore();
+  let saved = null;
+  store.ConfiguracionUsuarioService.getByUsuarioAndClaveAsync = async () => (
+    { id: 5, id_usuario: 7, valor: JSON.stringify({ realista: 1 }) }
+  );
+  store.ConfiguracionUsuarioService.updateAsync = async (entity) => { saved = entity; return 1; };
+
+  await store.registerChoiceAsync(7, 'realista');
+
+  assert.deepEqual(JSON.parse(saved.valor), { realista: 2 });
+});
+
+test('pictogramizeAsync: usa el estilo preferido del usuario para desempatar candidatos "alta"', async () => {
+  const service = new PictogramizationService();
+  service.extractConceptsAsync = async () => ({ concepts: [['agua']], usedGroq: true, degraded: false, model: 'x' });
+  service.PictogramaService.searchAsync = buildCatalog({
+    agua: [
+      { id: 'ilustracion', name: 'agua', imageUrl: 'x', source: 'MULBERRY', tags: [], visualStyle: 'ilustracion' },
+      { id: 'realista', name: 'agua', imageUrl: 'x', source: 'GLOBAL_SYMBOLS', tags: [], visualStyle: 'realista' },
+    ],
+  });
+  service.StylePreferenceStore.getPreferredStyleAsync = async () => 'realista';
+
+  const result = await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'agua' }] });
+
+  assert.equal(result.results[0].pictogram.id, 'realista');
 });

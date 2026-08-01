@@ -82,18 +82,40 @@ export function scoreConceptMatch(concept, pictogram) {
   return { level, score, matchedOn };
 }
 
+// Compara dos candidatos del mismo nivel para el mismo concepto. `current`
+// puede ser null (todavia no hay ninguno elegido). El desempate en score
+// empatado es primero el estilo visual preferido del usuario (Sesion 2:
+// "preferencia de estilo visual por persona" — el catalogo suele tener el
+// mismo concepto dibujado en varios estilos, y conviene mostrar siempre el
+// que esa persona ya eligio antes) y despues el titulo mas corto, mas
+// especifico.
+function isBetterCandidate(candidate, current, preferredStyle) {
+  if (!current) return true;
+  if (candidate.score !== current.score) return candidate.score > current.score;
+
+  if (preferredStyle) {
+    const candidateMatches = candidate.pictogram.visualStyle === preferredStyle;
+    const currentMatches = current.pictogram.visualStyle === preferredStyle;
+    if (candidateMatches !== currentMatches) return candidateMatches;
+  }
+
+  return candidate.pictogram.name.length < current.pictogram.name.length;
+}
+
 /**
  * Elige el mejor pictograma entre varios conceptos, cada uno con su lista de
  * candidatos ya buscados. Recorre los conceptos en el orden dado (el motor
  * de extraccion los ordena del mas al menos representativo) y devuelve el
- * primer "alta"; si no hay ninguno, el "media" de mayor score (desempate:
- * titulo mas corto, mas especifico).
+ * primer "alta"; si no hay ninguno, el "media" de mayor score. Ante un
+ * empate de score, se prefiere el estilo visual que el usuario ya eligio
+ * antes (`preferredStyle`, opcional).
  *
  * @param {string[]} concepts
- * @param {Map<string, Array<{name: string, tags?: string[]}>>} candidatesByConcept
+ * @param {Map<string, Array<{name: string, tags?: string[], visualStyle?: string|null}>>} candidatesByConcept
+ * @param {string|null} [preferredStyle]
  * @returns {{ pictogram, confidence: 'alta'|'media', concept: string, matchedOn: string, score: number } | null}
  */
-export function pickBestMatch(concepts, candidatesByConcept) {
+export function pickBestMatch(concepts, candidatesByConcept, preferredStyle = null) {
   let bestAlta = null;
   let bestMedia = null;
 
@@ -104,13 +126,9 @@ export function pickBestMatch(concepts, candidatesByConcept) {
       if (level === 'baja') continue;
 
       const entry = { pictogram, confidence: level, concept, matchedOn, score };
-      if (level === 'alta' && (!bestAlta || score > bestAlta.score)) {
+      if (level === 'alta' && isBetterCandidate(entry, bestAlta, preferredStyle)) {
         bestAlta = entry;
-      } else if (level === 'media' && (
-        !bestMedia
-        || score > bestMedia.score
-        || (score === bestMedia.score && pictogram.name.length < bestMedia.pictogram.name.length)
-      )) {
+      } else if (level === 'media' && isBetterCandidate(entry, bestMedia, preferredStyle)) {
         bestMedia = entry;
       }
     }

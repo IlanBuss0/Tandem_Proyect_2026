@@ -10,12 +10,14 @@ import AiPictogramService from '../services/AiPictogramService.js';
 import { upload } from '../middlewares/upload.middleware.js';
 import PictogramizationService, { MAX_PHRASES_PER_REQUEST } from '../services/PictogramizationService.js';
 import PersonalVocabularyStore from '../modules/pictograms/personal-vocabulary.js';
+import StylePreferenceStore from '../modules/pictograms/style-preference.js';
 
 const router = Router();
 const currentService = new PictogramaService();
 const aiService = new AiPictogramService();
 const pictogramizationService = new PictogramizationService();
 const personalVocabularyStore = new PersonalVocabularyStore();
+const stylePreferenceStore = new StylePreferenceStore();
 
 const authIfTargetPerteneciente = (req, res, next) => {
   const targetPertenecienteId = req.query.targetPertenecienteId || req.query.id_perteneciente_destino;
@@ -122,7 +124,9 @@ router.post('/pictogramize', authMiddleware, csrfMiddleware, async (req, res, ne
 // Vocabulario personal (Sesion 2): cuando el perteneciente elige un
 // pictograma a mano para un paso, se recuerda para ese texto exacto. La
 // proxima vez que aparezca el mismo texto, /pictogramize lo devuelve directo
-// sin gastar Groq ni volver a buscar en el catalogo.
+// sin gastar Groq ni volver a buscar en el catalogo. De paso, tambien queda
+// registrado el estilo visual de lo elegido, para preferirlo en futuros
+// matches automaticos aunque sea de otro texto.
 router.post('/vocabulary', authMiddleware, csrfMiddleware, async (req, res, next) => {
   try {
     const { text, pictogramId } = req.body || {};
@@ -131,6 +135,12 @@ router.post('/vocabulary', authMiddleware, csrfMiddleware, async (req, res, next
     }
 
     await personalVocabularyStore.rememberAsync(req.user.id, text, pictogramId);
+
+    const pictogram = await currentService.getByIdAsync(pictogramId);
+    if (pictogram?.visualStyle) {
+      await stylePreferenceStore.registerChoiceAsync(req.user.id, pictogram.visualStyle);
+    }
+
     res.status(StatusCodes.OK).json({ message: 'Vocabulario actualizado.' });
   } catch (error) {
     next(error);

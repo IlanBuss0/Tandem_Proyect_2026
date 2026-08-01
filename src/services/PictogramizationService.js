@@ -4,6 +4,7 @@ import { cacheService } from './CacheService.js';
 import { extractConceptsAsync, MAX_PHRASES_PER_REQUEST } from '../modules/pictograms/concept-extraction.js';
 import { pickBestMatch } from '../modules/pictograms/concept-matching.js';
 import PersonalVocabularyStore from '../modules/pictograms/personal-vocabulary.js';
+import StylePreferenceStore from '../modules/pictograms/style-preference.js';
 
 // Unica responsabilidad de este servicio: orquestar "frase -> pictograma".
 // No sabe COMO se extraen conceptos (concept-extraction.js) ni COMO se
@@ -47,6 +48,7 @@ export default class PictogramizationService {
   constructor() {
     this.PictogramaService = new PictogramaService();
     this.PersonalVocabularyStore = new PersonalVocabularyStore();
+    this.StylePreferenceStore = new StylePreferenceStore();
     // Asignado en el constructor (no llamado directo del import) para poder
     // mockearlo por instancia en los tests, mismo patron que
     // `service.PictogramaRepository.searchAsync = async () => ...` en el
@@ -166,11 +168,17 @@ export default class PictogramizationService {
       candidatesByConcept.set(concept, found);
     }));
 
+    // Preferencia de estilo visual (Sesion 2): entre varios candidatos
+    // empatados para el mismo concepto, se prioriza el estilo que este
+    // usuario ya eligio a mano mas veces. Se pide una sola vez para todo
+    // el lote, no por item.
+    const preferredStyle = await this.StylePreferenceStore.getPreferredStyleAsync(userId);
+
     const resolvedResults = new Map(vocabularyResults);
     for (const item of items) {
       const uniqueIndex = textToIndex.get(normalizeSearchText(item.text));
       const concepts = conceptsByUniqueText[uniqueIndex] || [];
-      const best = pickBestMatch(concepts, candidatesByConcept);
+      const best = pickBestMatch(concepts, candidatesByConcept, preferredStyle);
 
       const meetsMinConfidence = best && (minConfidence === 'media' || best.confidence === 'alta');
 
