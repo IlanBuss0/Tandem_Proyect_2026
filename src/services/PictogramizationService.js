@@ -53,12 +53,13 @@ export default class PictogramizationService {
    * @param {string|null} [params.targetPertenecienteId]
    * @param {'alta'|'media'} [params.minConfidence]
    * @param {number|string|null} [params.userId] - para el vocabulario personal (Sesion 2)
+   * @param {string|null} [params.preferredStyleOverride] - fuerza un estilo visual (Sesion 10, item 48: alto contraste) por encima de lo aprendido
    * @returns {Promise<{
    *   results: Array<{ id, text, concepts: string[], pictogram: object|null, confidence: 'alta'|'media'|'ninguna', matchedOn: string|null }>,
    *   engine: { model: string|null, usedGroq: boolean, degraded: boolean }
    * }>}
    */
-  async pictogramizeAsync({ phrases, language = 'es', targetPertenecienteId = null, minConfidence = 'media', userId = null }) {
+  async pictogramizeAsync({ phrases, language = 'es', targetPertenecienteId = null, minConfidence = 'media', userId = null, preferredStyleOverride = null }) {
     const allItems = (Array.isArray(phrases) ? phrases : [])
       .map((p, index) => (typeof p === 'string' ? { id: String(index), text: p } : p))
       .filter((p) => p && typeof p.text === 'string' && p.text.trim());
@@ -186,7 +187,11 @@ export default class PictogramizationService {
     // empatados para el mismo concepto, se prioriza el estilo que este
     // usuario ya eligio a mano mas veces. Se pide una sola vez para todo
     // el lote, no por item.
-    const preferredStyle = await this.StylePreferenceStore.getPreferredStyleAsync(userId);
+    // Sesion 10, item 48 (accesibilidad): si el frontend pide un estilo
+    // (alto contraste, por el setting de accesibilidad del usuario), gana
+    // por encima del estilo aprendido por uso — es una necesidad, no una
+    // preferencia que se pueda ignorar.
+    const preferredStyle = preferredStyleOverride || await this.StylePreferenceStore.getPreferredStyleAsync(userId);
 
     const resolvedResults = new Map(vocabularyResults);
     for (const item of items) {

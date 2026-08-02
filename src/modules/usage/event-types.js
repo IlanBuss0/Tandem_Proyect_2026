@@ -11,6 +11,7 @@ export const USAGE_EVENT_TYPES = Object.freeze({
   EMOCION_REGISTRADA: 'emocion_registrada',
   PICTOGRAMA_ELEGIDO: 'pictograma_elegido',
   PICTOGRAMA_CORREGIDO: 'pictograma_corregido',
+  TARJETA_AUTONOMIA_USADA: 'tarjeta_autonomia_usada',
 });
 
 const VALID_TYPES = new Set(Object.values(USAGE_EVENT_TYPES));

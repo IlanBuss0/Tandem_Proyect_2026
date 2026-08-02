@@ -10,6 +10,7 @@ import UsageEventService from '../src/services/UsageEventService.js';
 
 test('isValidTipoEvento: solo acepta los tipos del catalogo', () => {
   assert.equal(isValidTipoEvento(USAGE_EVENT_TYPES.RUTINA_PASO_COMPLETADO), true);
+  assert.equal(isValidTipoEvento(USAGE_EVENT_TYPES.TARJETA_AUTONOMIA_USADA), true);
   assert.equal(isValidTipoEvento('inventado'), false);
 });
 

@@ -14,6 +14,7 @@ import StylePreferenceStore from '../modules/pictograms/style-preference.js';
 import NotificationProducerService from '../services/NotificationProducerService.js';
 import UsageEventService from '../services/UsageEventService.js';
 import { USAGE_EVENT_TYPES } from '../modules/usage/event-types.js';
+import { VISUAL_STYLES } from '../modules/pictograms/visual-styles.js';
 
 const router = Router();
 const currentService = new PictogramaService();
@@ -96,7 +97,7 @@ router.post('/ai/moderation/:id/review', authMiddleware, csrfMiddleware, async (
 // igual (ver engine.degraded en la respuesta).
 router.post('/pictogramize', authMiddleware, csrfMiddleware, async (req, res, next) => {
   try {
-    const { phrases, language, minConfidence, targetPertenecienteId } = req.body || {};
+    const { phrases, language, minConfidence, targetPertenecienteId, preferredStyleOverride } = req.body || {};
 
     if (!Array.isArray(phrases) || phrases.length === 0) {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: 'phrases es obligatorio y no puede estar vacio.' });
@@ -118,6 +119,7 @@ router.post('/pictogramize', authMiddleware, csrfMiddleware, async (req, res, ne
       minConfidence,
       targetPertenecienteId: targetPertenecienteId || null,
       userId: req.user.id,
+      preferredStyleOverride: Object.values(VISUAL_STYLES).includes(preferredStyleOverride) ? preferredStyleOverride : null,
     });
 
     res.status(StatusCodes.OK).json(result);

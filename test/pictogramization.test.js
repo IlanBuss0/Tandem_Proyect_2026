@@ -397,6 +397,26 @@ test('pictogramizeAsync: solo se le pide a Groq lo que falta en el memo, y se gu
   assert.equal(upserted[0].textoNormalizado, 'lavarse las manos');
 });
 
+test('pictogramizeAsync: preferredStyleOverride gana por encima del estilo aprendido (Sesion 10, alto contraste)', async () => {
+  const service = buildService();
+  service.extractConceptsAsync = async () => ({ concepts: [['agua']], usedGroq: true, degraded: false, model: 'x' });
+  service.PictogramaService.searchAsync = buildCatalog({
+    agua: [
+      { id: 'ilustracion', name: 'agua', imageUrl: 'x', source: 'MULBERRY', tags: [], visualStyle: 'ilustracion' },
+      { id: 'alto-contraste', name: 'agua', imageUrl: 'x', source: 'GLOBAL_SYMBOLS', tags: [], visualStyle: 'alto-contraste' },
+    ],
+  });
+  // el usuario aprendio "ilustracion" por uso, pero pide alto contraste
+  service.StylePreferenceStore.getPreferredStyleAsync = async () => 'ilustracion';
+
+  const result = await service.pictogramizeAsync({
+    phrases: [{ id: '1', text: 'agua' }],
+    preferredStyleOverride: 'alto-contraste',
+  });
+
+  assert.equal(result.results[0].pictogram.id, 'alto-contraste');
+});
+
 test('pictogramizeAsync: un resultado degradado (heuristico) no se guarda en el memo', async () => {
   const service = buildService();
   let upsertCalled = false;
