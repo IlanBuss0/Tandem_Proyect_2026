@@ -1,10 +1,10 @@
 import PictogramaService from './PictogramaService.js';
 import { normalizeSearchText } from './PictogramaService.js';
-import { cacheService } from './CacheService.js';
 import { extractConceptsAsync, MAX_PHRASES_PER_REQUEST } from '../modules/pictograms/concept-extraction.js';
 import { pickBestMatch } from '../modules/pictograms/concept-matching.js';
 import PersonalVocabularyStore from '../modules/pictograms/personal-vocabulary.js';
 import StylePreferenceStore from '../modules/pictograms/style-preference.js';
+import PictogramizationMemoRepository from '../repositories/PictogramizationMemoRepository.js';
 
 // Unica responsabilidad de este servicio: orquestar "frase -> pictograma".
 // No sabe COMO se extraen conceptos (concept-extraction.js) ni COMO se
@@ -23,37 +23,25 @@ import StylePreferenceStore from '../modules/pictograms/style-preference.js';
 export { MAX_PHRASES_PER_REQUEST };
 
 const CANDIDATES_PER_CONCEPT = 8;
-const MEMO_MAX_SIZE = 2000;
-
-// Memo en proceso: Redis esta desactivado hoy (REDIS_URL sin configurar), asi
-// que cacheService es no-op. Este Map evita que dos pestanas del mismo
-// usuario, o dos llamados seguidos, disparen dos veces la misma resolucion
-// en la misma corrida del proceso. No reemplaza la persistencia real (eso lo
-// hace el front guardando pictogramResolvedFor en cada RoutineItem).
-const memo = new Map();
-
-function memoGet(key) {
-  return memo.has(key) ? memo.get(key) : undefined;
-}
-
-function memoSet(key, value) {
-  if (memo.size >= MEMO_MAX_SIZE) {
-    const oldest = memo.keys().next().value;
-    memo.delete(oldest);
-  }
-  memo.set(key, value);
-}
 
 export default class PictogramizationService {
   constructor() {
     this.PictogramaService = new PictogramaService();
     this.PersonalVocabularyStore = new PersonalVocabularyStore();
     this.StylePreferenceStore = new StylePreferenceStore();
+    this.PictogramizationMemoRepository = new PictogramizationMemoRepository();
     // Asignado en el constructor (no llamado directo del import) para poder
     // mockearlo por instancia en los tests, mismo patron que
     // `service.PictogramaRepository.searchAsync = async () => ...` en el
     // resto del repo.
     this.extractConceptsAsync = extractConceptsAsync;
+  }
+
+  async ensureMemoSchemaAsync() {
+    if (!this.memoSchemaReady) {
+      this.memoSchemaReady = this.PictogramizationMemoRepository.ensureSchemaAsync();
+    }
+    return await this.memoSchemaReady;
   }
 
   /**
@@ -132,21 +120,47 @@ export default class PictogramizationService {
       }
     }
 
-    const cacheKey = `pictogramize.${language}.${uniqueTexts.map(normalizeSearchText).sort().join('|')}`;
-    let conceptsByUniqueText = await cacheService.get(cacheKey);
+    // Memo global en BD (texto -> conceptos), compartido entre TODOS los
+    // usuarios y TODAS las superficies (rutinas, calendario, traductor
+    // manual): si alguien ya escribio "lavarse los dientes" alguna vez, ni
+    // este ni ningun otro usuario vuelve a gastar Groq para ese texto. Se
+    // guardan los CONCEPTOS, no el pictograma final, para que una mejora del
+    // catalogo despues de hoy siga beneficiando a un texto ya cacheado (el
+    // matching contra el catalogo es SQL, no consume cuota).
+    await this.ensureMemoSchemaAsync();
+    const normalizedUniqueTexts = uniqueTexts.map(normalizeSearchText);
+    const memoHits = await this.PictogramizationMemoRepository.getManyAsync(normalizedUniqueTexts, language);
+
+    const missingIndexes = [];
+    const missingTexts = [];
+    normalizedUniqueTexts.forEach((normalized, index) => {
+      if (!memoHits.has(normalized)) {
+        missingIndexes.push(index);
+        missingTexts.push(uniqueTexts[index]);
+      }
+    });
+
+    const conceptsByUniqueText = new Array(uniqueTexts.length);
+    normalizedUniqueTexts.forEach((normalized, index) => {
+      if (memoHits.has(normalized)) conceptsByUniqueText[index] = memoHits.get(normalized);
+    });
+
     let engineInfo = { usedGroq: false, degraded: false, model: null };
 
-    if (!conceptsByUniqueText) {
-      const memoHit = memoGet(cacheKey);
-      if (memoHit) {
-        conceptsByUniqueText = memoHit.concepts;
-        engineInfo = memoHit.engineInfo;
-      } else {
-        const { concepts, usedGroq, degraded, model } = await this.extractConceptsAsync(uniqueTexts);
-        conceptsByUniqueText = concepts;
-        engineInfo = { usedGroq, degraded, model };
-        memoSet(cacheKey, { concepts, engineInfo });
-        await cacheService.set(cacheKey, concepts, 86400);
+    if (missingTexts.length > 0) {
+      const { concepts, usedGroq, degraded, model } = await this.extractConceptsAsync(missingTexts);
+      engineInfo = { usedGroq, degraded, model };
+      missingIndexes.forEach((uniqueIndex, i) => { conceptsByUniqueText[uniqueIndex] = concepts[i]; });
+
+      // Solo se persiste al memo compartido cuando Groq de verdad contesto
+      // (no degradado): un resultado heuristico es peor que uno de Groq, y
+      // guardarlo "envenenaria" el memo para el proximo que escriba lo mismo.
+      if (usedGroq && !degraded) {
+        const entries = missingIndexes.map((uniqueIndex, i) => ({
+          textoNormalizado: normalizedUniqueTexts[uniqueIndex],
+          conceptos: concepts[i],
+        }));
+        await this.PictogramizationMemoRepository.upsertManyAsync(entries, language, model);
       }
     }
 

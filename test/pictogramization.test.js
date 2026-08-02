@@ -130,8 +130,20 @@ function buildCatalog(entries) {
   return async ({ search }) => ({ items: entries[search] || [], total: (entries[search] || []).length });
 }
 
-test('pictogramizeAsync: una sola llamada de extraccion para todas las frases del lote', async () => {
+// El memo global (PictogramizationMemoRepository) pega contra Postgres, que
+// no existe en este entorno de test. Por defecto se mockea vacio (sin hits,
+// upsert no-op) para que el resto de los tests no dependa de BD; los tests
+// del memo en si mismo sobreescriben esto a proposito.
+function buildService() {
   const service = new PictogramizationService();
+  service.PictogramizationMemoRepository.ensureSchemaAsync = async () => {};
+  service.PictogramizationMemoRepository.getManyAsync = async () => new Map();
+  service.PictogramizationMemoRepository.upsertManyAsync = async () => {};
+  return service;
+}
+
+test('pictogramizeAsync: una sola llamada de extraccion para todas las frases del lote', async () => {
+  const service = buildService();
   let calls = 0;
   service.extractConceptsAsync = async (texts) => {
     calls += 1;
@@ -150,7 +162,7 @@ test('pictogramizeAsync: una sola llamada de extraccion para todas las frases de
 });
 
 test('pictogramizeAsync: frases duplicadas piden un solo searchAsync por concepto unico', async () => {
-  const service = new PictogramizationService();
+  const service = buildService();
   service.extractConceptsAsync = async (texts) => ({
     concepts: texts.map(() => ['manos']), usedGroq: true, degraded: false, model: 'x',
   });
@@ -168,7 +180,7 @@ test('pictogramizeAsync: sin GROQ_API_KEY degrada al heuristico sin lanzar', asy
   const previous = envConfig.groqApiKey;
   envConfig.groqApiKey = null;
   try {
-    const service = new PictogramizationService();
+    const service = buildService();
     service.PictogramaService.searchAsync = buildCatalog({ dientes: [{ id: '1', name: 'dientes', imageUrl: 'x', source: 'MULBERRY', tags: [] }] });
 
     const result = await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'dientes' }] });
@@ -182,7 +194,7 @@ test('pictogramizeAsync: sin GROQ_API_KEY degrada al heuristico sin lanzar', asy
 });
 
 test('pictogramizeAsync: sin certeza suficiente devuelve pictogram null y confidence "ninguna"', async () => {
-  const service = new PictogramizationService();
+  const service = buildService();
   service.extractConceptsAsync = async () => ({ concepts: [['algo-que-no-existe']], usedGroq: true, degraded: false, model: 'x' });
   service.PictogramaService.searchAsync = buildCatalog({});
 
@@ -193,7 +205,7 @@ test('pictogramizeAsync: sin certeza suficiente devuelve pictogram null y confid
 });
 
 test('pictogramizeAsync: minConfidence "alta" descarta los "media"', async () => {
-  const service = new PictogramizationService();
+  const service = buildService();
   service.extractConceptsAsync = async () => ({ concepts: [['comer']], usedGroq: true, degraded: false, model: 'x' });
   service.PictogramaService.searchAsync = buildCatalog({ comer: [{ id: '1', name: 'comer con la boca cerrada', imageUrl: 'x', source: 'MULBERRY', tags: [] }] });
 
@@ -203,7 +215,7 @@ test('pictogramizeAsync: minConfidence "alta" descarta los "media"', async () =>
 });
 
 test('pictogramizeAsync: acepta phrases como array de strings (usa el indice como id)', async () => {
-  const service = new PictogramizationService();
+  const service = buildService();
   service.extractConceptsAsync = async (texts) => ({ concepts: texts.map((t) => [t]), usedGroq: true, degraded: false, model: 'x' });
   service.PictogramaService.searchAsync = buildCatalog({});
 
@@ -213,7 +225,7 @@ test('pictogramizeAsync: acepta phrases como array de strings (usa el indice com
 });
 
 test('pictogramizeAsync: array vacio de phrases devuelve resultados vacios sin llamar a nada', async () => {
-  const service = new PictogramizationService();
+  const service = buildService();
   let called = false;
   service.extractConceptsAsync = async () => { called = true; return { concepts: [], usedGroq: false, degraded: false, model: null }; };
 
@@ -261,7 +273,7 @@ test('personal-vocabulary: rememberAsync mergea con el vocabulario existente en 
 });
 
 test('pictogramizeAsync: un texto en el vocabulario personal no llama a Groq ni al catalogo', async () => {
-  const service = new PictogramizationService();
+  const service = buildService();
   let groqCalls = 0;
   let searchCalls = 0;
   service.extractConceptsAsync = async () => { groqCalls += 1; return { concepts: [[]], usedGroq: true, degraded: false, model: 'x' }; };
@@ -279,7 +291,7 @@ test('pictogramizeAsync: un texto en el vocabulario personal no llama a Groq ni 
 });
 
 test('pictogramizeAsync: mezcla de un texto en vocabulario y otro nuevo resuelve cada uno por su via', async () => {
-  const service = new PictogramizationService();
+  const service = buildService();
   service.extractConceptsAsync = async (texts) => ({ concepts: texts.map(() => ['ducharse']), usedGroq: true, degraded: false, model: 'x' });
   service.PictogramaService.searchAsync = buildCatalog({ ducharse: [{ id: 'auto-1', name: 'ducharse', imageUrl: 'x', source: 'MULBERRY', tags: [] }] });
   service.PictogramaService.getByIdAsync = async (id) => ({ id, name: 'dientes', imageUrl: 'x', source: 'MULBERRY' });
@@ -296,7 +308,7 @@ test('pictogramizeAsync: mezcla de un texto en vocabulario y otro nuevo resuelve
 });
 
 test('pictogramizeAsync: si el pictograma del vocabulario ya no existe, resuelve normal en vez de romper', async () => {
-  const service = new PictogramizationService();
+  const service = buildService();
   service.extractConceptsAsync = async () => ({ concepts: [['ducharse']], usedGroq: true, degraded: false, model: 'x' });
   service.PictogramaService.searchAsync = buildCatalog({ ducharse: [{ id: 'auto-1', name: 'ducharse', imageUrl: 'x', source: 'MULBERRY', tags: [] }] });
   service.PictogramaService.getByIdAsync = async () => null;
@@ -337,7 +349,7 @@ test('style-preference: registerChoiceAsync acumula en vez de pisar', async () =
 });
 
 test('pictogramizeAsync: usa el estilo preferido del usuario para desempatar candidatos "alta"', async () => {
-  const service = new PictogramizationService();
+  const service = buildService();
   service.extractConceptsAsync = async () => ({ concepts: [['agua']], usedGroq: true, degraded: false, model: 'x' });
   service.PictogramaService.searchAsync = buildCatalog({
     agua: [
@@ -350,4 +362,49 @@ test('pictogramizeAsync: usa el estilo preferido del usuario para desempatar can
   const result = await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'agua' }] });
 
   assert.equal(result.results[0].pictogram.id, 'realista');
+});
+
+// --- Memo global en BD (arreglo del traductor: no gastar Groq de nuevo) ---
+// Un texto que YA se le pidio a Groq alguna vez (de cualquier usuario, en
+// cualquier pantalla) no vuelve a gastar cuota: se sirve del memo.
+
+test('pictogramizeAsync: un texto ya memoizado no llama a Groq', async () => {
+  const service = buildService();
+  let groqCalls = 0;
+  service.extractConceptsAsync = async () => { groqCalls += 1; return { concepts: [['no-deberia-usarse']], usedGroq: true, degraded: false, model: 'x' }; };
+  service.PictogramizationMemoRepository.getManyAsync = async () => new Map([['ducharse', ['ducharse', 'ducha']]]);
+  service.PictogramaService.searchAsync = buildCatalog({ ducharse: [{ id: 'auto-1', name: 'ducharse', imageUrl: 'x', source: 'MULBERRY', tags: [] }] });
+
+  const result = await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'Ducharse' }] });
+
+  assert.equal(groqCalls, 0);
+  assert.equal(result.results[0].pictogram.id, 'auto-1');
+});
+
+test('pictogramizeAsync: solo se le pide a Groq lo que falta en el memo, y se guarda lo nuevo', async () => {
+  const service = buildService();
+  let groqTexts = null;
+  let upserted = null;
+  service.extractConceptsAsync = async (texts) => { groqTexts = texts; return { concepts: texts.map(() => ['manos']), usedGroq: true, degraded: false, model: 'x' }; };
+  service.PictogramizationMemoRepository.getManyAsync = async () => new Map([['ducharse', ['ducharse']]]);
+  service.PictogramizationMemoRepository.upsertManyAsync = async (entries) => { upserted = entries; };
+  service.PictogramaService.searchAsync = buildCatalog({});
+
+  await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'Ducharse' }, { id: '2', text: 'Lavarse las manos' }] });
+
+  assert.deepEqual(groqTexts, ['Lavarse las manos'], 'solo pide a Groq el texto que no estaba en el memo');
+  assert.equal(upserted.length, 1);
+  assert.equal(upserted[0].textoNormalizado, 'lavarse las manos');
+});
+
+test('pictogramizeAsync: un resultado degradado (heuristico) no se guarda en el memo', async () => {
+  const service = buildService();
+  let upsertCalled = false;
+  service.extractConceptsAsync = async () => ({ concepts: [['ducharse']], usedGroq: true, degraded: true, model: 'x' });
+  service.PictogramizationMemoRepository.upsertManyAsync = async () => { upsertCalled = true; };
+  service.PictogramaService.searchAsync = buildCatalog({});
+
+  await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'Ducharse' }] });
+
+  assert.equal(upsertCalled, false, 'no hay que envenenar el memo con un resultado degradado');
 });

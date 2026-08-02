@@ -21,27 +21,33 @@ const BATCH_SIZE_FALLBACK = 12;
 const DELAY_BETWEEN_BATCHES_MS = 2500;
 export const MAX_PHRASES_PER_REQUEST = 60;
 
-export const SYSTEM_PROMPT = `Convertis pasos de rutinas diarias en conceptos buscables en un catalogo de pictogramas de comunicacion aumentativa (CAA), en espanol rioplatense (Argentina).
+export const SYSTEM_PROMPT = `Convertis frases en espanol rioplatense (Argentina) en conceptos buscables en un catalogo de pictogramas de comunicacion aumentativa (CAA). Las frases pueden ser pasos cortos de una rutina ("lavarse los dientes") O oraciones completas de una conversacion o un texto pegado de otro lado ("Juan se fue caminando hacia la plaza porque queria ver a sus amigos").
 
 Por cada frase de entrada devolves de 1 a 3 conceptos, ORDENADOS del mas representativo al menos representativo.
 
 Reglas:
 1. Todo en minusculas, sin comillas, sin punto final.
-2. Sacas articulos, preposiciones, posesivos, pronombres sueltos y adverbios de tiempo ("la", "el", "mi", "de", "en", "con", "para", "antes", "despues", "hoy", "cuando").
-3. Los verbos van en INFINITIVO. Si el verbo es reflexivo o pronominal, dejalo asi: "me lavo los dientes" -> "lavarse los dientes". "Se viste" -> "vestirse".
-4. Las expresiones de varias palabras que nombran UNA sola accion o UN solo objeto NO se parten: "lavarse las manos", "hacer la cama", "poner la mesa", "sacar la basura", "cepillo de dientes". El primer concepto casi siempre es la accion completa.
-5. El concepto 1 es la accion u objeto principal del paso. Los conceptos 2 y 3 son alternativas mas cortas o mas generales, para el caso de que el catalogo no tenga el primero: "tomar el colectivo a la escuela" -> ["tomar el colectivo","colectivo","escuela"]. Nunca repitas el mismo concepto dos veces.
-6. Usas la palabra mas comun en Argentina: "autobus" -> "colectivo", "telefono movil" -> "celular", "piscina" -> "pileta", "coche" -> "auto", "zumo" -> "jugo", "ordenador" -> "computadora". "lavarse los dientes" y "cepillarse los dientes" son ambos validos: devolve los dos.
-7. Si la frase es abstracta y no nombra nada dibujable ("pausa de respiracion cuando me pongo nervioso"), devolve el concepto concreto mas cercano ("respirar") y nada mas. NO inventes objetos que la frase no menciona.
-8. Nunca devuelvas un array vacio: si no podes extraer nada, devolve la frase entera en minusculas como unico concepto.
-9. No agregues explicaciones, ni markdown, ni claves extra.
+2. Sacas articulos, preposiciones, posesivos, pronombres sueltos, conectores y adverbios: "la", "el", "mi", "de", "en", "con", "para", "hacia", "sobre", "entre", "sin", "por", "que", "asi que", "porque", "antes", "despues", "hoy", "cuando", "muy", "mas", "tan", "esa", "eso", "aquello", "aquella".
+3. Si la frase es una ORACION COMPLETA (tiene sujeto, verbo y complementos, como una charla o un mensaje pegado), quedate con el NUCLEO: el verbo principal + su objeto directo. Ignora sujetos explicitos ("Juan", "mi hermano"), causas ("porque queria..."), y complementos circunstanciales de lugar/modo salvo que sean el punto central de la frase. "Juan se fue caminando hacia la plaza porque queria ver a sus amigos" -> el nucleo es "ir a la plaza" o "caminar", no "Juan" ni "porque queria ver a sus amigos".
+4. Los verbos van en INFINITIVO. Si el verbo es reflexivo o pronominal, dejalo asi: "me lavo los dientes" -> "lavarse los dientes". "Se viste" -> "vestirse".
+5. Las expresiones de varias palabras que nombran UNA sola accion o UN solo objeto NO se parten: "lavarse las manos", "hacer la cama", "poner la mesa", "sacar la basura", "cepillo de dientes". El primer concepto casi siempre es la accion completa.
+6. El concepto 1 es la accion u objeto principal del paso. Los conceptos 2 y 3 son alternativas mas cortas o mas generales, para el caso de que el catalogo no tenga el primero: "tomar el colectivo a la escuela" -> ["tomar el colectivo","colectivo","escuela"]. Nunca repitas el mismo concepto dos veces.
+7. Usas la palabra mas comun en Argentina: "autobus" -> "colectivo", "telefono movil" -> "celular", "piscina" -> "pileta", "coche" -> "auto", "zumo" -> "jugo", "ordenador" -> "computadora". "lavarse los dientes" y "cepillarse los dientes" son ambos validos: devolve los dos.
+8. Si la frase es abstracta y no nombra nada dibujable ("pausa de respiracion cuando me pongo nervioso"), devolve el concepto concreto mas cercano ("respirar") y nada mas. NO inventes objetos que la frase no menciona.
+9. Nunca devuelvas un array vacio: si no podes extraer nada, devolve la frase entera en minusculas como unico concepto.
+10. No agregues explicaciones, ni markdown, ni claves extra.
 
 Respondes UNICAMENTE con un objeto JSON con una sola clave "conceptos", cuyo valor es un array de arrays de strings, del mismo largo y en el mismo orden que la entrada.
 
-Ejemplo de entrada: ["Lavarse las manos antes de comer","Tomar el colectivo a la escuela","Hacer la cama"]
-Ejemplo de salida: {"conceptos":[["lavarse las manos","manos","comer"],["tomar el colectivo","colectivo","escuela"],["hacer la cama","cama"]]}`;
+Ejemplo de entrada: ["Lavarse las manos antes de comer","Tomar el colectivo a la escuela","Hacer la cama","Juan se fue caminando hacia la plaza porque queria ver a sus amigos"]
+Ejemplo de salida: {"conceptos":[["lavarse las manos","manos","comer"],["tomar el colectivo","colectivo","escuela"],["hacer la cama","cama"],["caminar","ir a la plaza","plaza"]]}`;
 
-const STOPWORDS = new Set(['la', 'el', 'los', 'las', 'un', 'una', 'de', 'del', 'en', 'con', 'para', 'a', 'mi', 'su', 'antes', 'despues', 'hoy', 'cuando', 'y', 'al']);
+const STOPWORDS = new Set([
+  'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas', 'de', 'del', 'en', 'con', 'para', 'a', 'mi', 'su', 'sus',
+  'antes', 'despues', 'hoy', 'cuando', 'y', 'al', 'hacia', 'sobre', 'entre', 'sin', 'por', 'que', 'porque', 'asi',
+  'muy', 'mas', 'tan', 'esa', 'ese', 'eso', 'esos', 'esas', 'aquello', 'aquella', 'aquellos', 'aquellas',
+  'se', 'lo', 'le', 'les', 'les', 'yo', 'tu', 'el', 'ella', 'nosotros', 'ellos', 'ellas', 'porque', 'pero',
+]);
 
 /**
  * Fallback sin LLM. Peor que Groq (no lematiza ni agrupa reflexivos), pero
