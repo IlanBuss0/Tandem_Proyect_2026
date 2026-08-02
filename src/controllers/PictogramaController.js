@@ -16,6 +16,7 @@ import UsageEventService from '../services/UsageEventService.js';
 import { USAGE_EVENT_TYPES } from '../modules/usage/event-types.js';
 import { VISUAL_STYLES } from '../modules/pictograms/visual-styles.js';
 import { NUCLEO_VOCABULARIO, TABLEROS_SITUACIONALES } from '../modules/communication/nucleo-vocabulario.js';
+import { simplifyToLecturaFacilAsync, MAX_LECTURA_FACIL_CHARS } from '../modules/pictograms/lectura-facil.js';
 
 const router = Router();
 const currentService = new PictogramaService();
@@ -242,6 +243,30 @@ router.get('/tableros/:nombre', authMiddleware, async (req, res, next) => {
     const language = req.query.language || req.query.lang || 'es';
     const resolved = await resolveWordListAsync(`tablero.${req.params.nombre}`, { [req.params.nombre]: words }, language);
     res.status(StatusCodes.OK).json(resolved[req.params.nombre]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// item 15 "explicame esto": simplifica un texto a lectura facil y lo
+// traduce a pictogramas en el mismo llamado, para que el frontend no
+// tenga que orquestar dos requests. Nunca 5xx por culpa de Groq: si
+// simplifyToLecturaFacilAsync degrada, se sigue igual con el heuristico.
+router.post('/explicame', authMiddleware, csrfMiddleware, async (req, res, next) => {
+  try {
+    const { text, language } = req.body || {};
+    if (typeof text !== 'string' || !text.trim()) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: 'text es obligatorio.' });
+    }
+    if (text.length > MAX_LECTURA_FACIL_CHARS) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: `text no puede tener mas de ${MAX_LECTURA_FACIL_CHARS} caracteres.` });
+    }
+
+    const { sentences, usedGroq, degraded } = await simplifyToLecturaFacilAsync(text);
+    const phrases = sentences.map((sentence, index) => ({ id: String(index), text: sentence }));
+    const pictogramized = await pictogramizationService.pictogramizeAsync({ phrases, language, userId: req.user.id });
+
+    res.status(StatusCodes.OK).json({ results: pictogramized.results, engine: { ...pictogramized.engine, lecturaFacilUsedGroq: usedGroq, lecturaFacilDegraded: degraded } });
   } catch (error) {
     next(error);
   }
