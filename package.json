@@ -28,6 +28,8 @@
     "test:communication": "node --test test/communication.test.js",
     "test:lectura-facil": "node --test test/lectura-facil.test.js",
     "test:vocabulary-report": "node --test test/vocabulary-report.test.js",
+    "test:pattern-detection": "node --test test/pattern-detection.test.js",
+    "test:config-parsing": "node --test test/config-parsing.test.js",
     "seed:permissions": "node scripts/seed-permission-catalogs.mjs",
     "db:invites-vinculo": "node scripts/create-invites-vinculo-table.mjs",
     "db:invites-vinculo-profesional": "node scripts/create-invites-vinculo-profesional-table.mjs",

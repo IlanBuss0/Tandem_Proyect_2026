@@ -3,13 +3,17 @@ import { StatusCodes } from 'http-status-codes';
 
 import UsageEventService from '../services/UsageEventService.js';
 import AuthorizationService from '../services/AuthorizationService.js';
+import ConfiguracionUsuarioService from '../services/ConfiguracionUsuarioService.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { csrfMiddleware } from '../middlewares/csrf.middleware.js';
 import { buildVocabularyReport } from '../modules/usage/vocabulary-report.js';
 import { USAGE_EVENT_TYPES } from '../modules/usage/event-types.js';
+import { parseCalendarEventsFromConfigs, parseEmotionsFromConfigs } from '../modules/usage/config-parsing.js';
+import { detectEventTypePatterns, evaluateAnticipationSupport } from '../modules/usage/pattern-detection.js';
 
 const router = Router();
 const usageEventService = new UsageEventService();
+const configuracionUsuarioService = new ConfiguracionUsuarioService();
 
 // Registro de uso (Sesion 9): siempre se registra a nombre de QUIEN LLAMA
 // (req.user.id) — un perteneciente registra su propio uso. No hay "en
@@ -70,6 +74,40 @@ router.get('/usuario/:idUsuario/informe-vocabulario', authMiddleware, async (req
       limit: 500,
     });
     res.status(StatusCodes.OK).json(buildVocabularyReport(events));
+  } catch (error) {
+    res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
+  }
+});
+
+// Deteccion de patrones (Sesion 20, item 41 ⭐) + que apoyos funcionan
+// (item 43). Cruza calendario y emociones (viven en configuraciones_
+// usuarios, ver ConfiguracionUsuarioController) con los eventos "se vio la
+// historia social" (registrados desde SocialStoryView con tipoEvento
+// 'pictograma_elegido' y entidadTipo 'historia_social', Sesion 15). Todo
+// el calculo honesto (piso minimo de datos) vive en el modulo puro
+// pattern-detection.js — aca solo se junta la data cruda.
+router.get('/usuario/:idUsuario/patrones', authMiddleware, async (req, res, next) => {
+  try {
+    const idUsuario = parseInt(req.params.idUsuario, 10);
+    await AuthorizationService.assertCanReadUsuarioConfig(req.user.id, idUsuario);
+
+    const [configs, choiceEvents] = await Promise.all([
+      configuracionUsuarioService.getByUsuarioIdAsync(idUsuario),
+      usageEventService.getForUsuarioAsync(idUsuario, { tipoEvento: USAGE_EVENT_TYPES.PICTOGRAMA_ELEGIDO, limit: 1000 }),
+    ]);
+
+    const events = parseCalendarEventsFromConfigs(configs);
+    const emotions = parseEmotionsFromConfigs(configs);
+    const socialStoryViewedEventIds = new Set(
+      (choiceEvents || [])
+        .filter((e) => e.entidad_tipo === 'historia_social' && e.entidad_id)
+        .map((e) => String(e.entidad_id)),
+    );
+
+    res.status(StatusCodes.OK).json({
+      eventTypePatterns: detectEventTypePatterns(events, emotions),
+      anticipationSupport: evaluateAnticipationSupport(events, emotions, socialStoryViewedEventIds),
+    });
   } catch (error) {
     res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
   }
