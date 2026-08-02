@@ -12,6 +12,8 @@ import PictogramizationService, { MAX_PHRASES_PER_REQUEST } from '../services/Pi
 import PersonalVocabularyStore from '../modules/pictograms/personal-vocabulary.js';
 import StylePreferenceStore from '../modules/pictograms/style-preference.js';
 import NotificationProducerService from '../services/NotificationProducerService.js';
+import UsageEventService from '../services/UsageEventService.js';
+import { USAGE_EVENT_TYPES } from '../modules/usage/event-types.js';
 
 const router = Router();
 const currentService = new PictogramaService();
@@ -20,6 +22,7 @@ const pictogramizationService = new PictogramizationService();
 const personalVocabularyStore = new PersonalVocabularyStore();
 const stylePreferenceStore = new StylePreferenceStore();
 const notificationProducerService = new NotificationProducerService();
+const usageEventService = new UsageEventService();
 
 const authIfTargetPerteneciente = (req, res, next) => {
   const targetPertenecienteId = req.query.targetPertenecienteId || req.query.id_perteneciente_destino;
@@ -159,6 +162,15 @@ router.post('/vocabulary', authMiddleware, csrfMiddleware, async (req, res, next
     if (pictogram?.visualStyle) {
       await stylePreferenceStore.registerChoiceAsync(ownerUsuarioId, pictogram.visualStyle);
     }
+
+    await usageEventService.logAsync({
+      idUsuario: ownerUsuarioId,
+      tipoEvento: isCorrectionForOther ? USAGE_EVENT_TYPES.PICTOGRAMA_CORREGIDO : USAGE_EVENT_TYPES.PICTOGRAMA_ELEGIDO,
+      entidadTipo: 'texto',
+      idPictograma: String(pictogramId),
+      valor: { text },
+      origen: isCorrectionForOther ? 'tutor' : 'perteneciente',
+    });
 
     if (isCorrectionForOther) {
       // reference_id en la tabla notificaciones es INTEGER: el id de un
