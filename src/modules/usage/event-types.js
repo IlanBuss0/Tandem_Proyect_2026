@@ -13,6 +13,13 @@ export const USAGE_EVENT_TYPES = Object.freeze({
   PICTOGRAMA_CORREGIDO: 'pictograma_corregido',
   TARJETA_AUTONOMIA_USADA: 'tarjeta_autonomia_usada',
   ENUNCIADO_HABLADO: 'enunciado_hablado',
+  // Item 29 "pedir cosas para su dia": el perteneciente propone algo para
+  // agregar a su rutina, en vez de solo recibir lo que le asignan. No hay
+  // flujo de aprobacion automatico todavia — el tutor lo ve en su
+  // timeline y lo agrega el mismo con las herramientas que ya tiene
+  // (Sesion 8). El primer paso de "co-decidir" es que el pedido exista y
+  // se vea, no un motor de aprobaciones completo.
+  PEDIDO_DIA: 'pedido_dia',
 });
 
 const VALID_TYPES = new Set(Object.values(USAGE_EVENT_TYPES));
