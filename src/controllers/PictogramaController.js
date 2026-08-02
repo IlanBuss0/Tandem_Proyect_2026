@@ -15,7 +15,7 @@ import NotificationProducerService from '../services/NotificationProducerService
 import UsageEventService from '../services/UsageEventService.js';
 import { USAGE_EVENT_TYPES } from '../modules/usage/event-types.js';
 import { VISUAL_STYLES } from '../modules/pictograms/visual-styles.js';
-import { NUCLEO_VOCABULARIO } from '../modules/communication/nucleo-vocabulario.js';
+import { NUCLEO_VOCABULARIO, TABLEROS_SITUACIONALES } from '../modules/communication/nucleo-vocabulario.js';
 
 const router = Router();
 const currentService = new PictogramaService();
@@ -195,33 +195,61 @@ router.post('/vocabulary', authMiddleware, csrfMiddleware, async (req, res, next
   }
 });
 
-// Vocabulario nucleo resuelto (Sesion 11, item 37): contenido estatico
-// (las ~80 palabras de nucleo-vocabulario.js no cambian por request), asi
-// que se resuelve una vez por idioma y se sirve de memoria despues. Es SQL
-// contra el catalogo (searchAsync), no Groq: no hay cuota que cuidar aca.
-const nucleoCache = new Map();
+// Vocabulario nucleo y tableros situacionales resueltos (Sesion 11 item 37,
+// Sesion 12 item 38): contenido estatico (no cambia por request), asi que
+// se resuelve una vez por idioma+catalogo y se sirve de memoria despues. Es
+// SQL contra el catalogo (searchAsync), no Groq: no hay cuota que cuidar aca.
+const wordListCache = new Map();
+
+async function resolveWordListAsync(cacheKey, wordsByGroup, language) {
+  const fullKey = `${cacheKey}.${language}`;
+  if (!wordListCache.has(fullKey)) {
+    const groups = await Promise.all(
+      Object.entries(wordsByGroup).map(async ([group, words]) => {
+        const resolved = await Promise.all(words.map(async (word) => {
+          const { items } = await currentService.searchAsync({ search: word, language, limit: 1 });
+          const pictogram = items[0] || null;
+          return {
+            word,
+            pictogram: pictogram ? { id: pictogram.id, name: pictogram.name, imageUrl: pictogram.imageUrl, source: pictogram.source } : null,
+          };
+        }));
+        return [group, resolved];
+      }),
+    );
+    wordListCache.set(fullKey, Object.fromEntries(groups));
+  }
+  return wordListCache.get(fullKey);
+}
 
 router.get('/nucleo', authMiddleware, async (req, res, next) => {
   try {
     const language = req.query.language || req.query.lang || 'es';
-    if (!nucleoCache.has(language)) {
-      const categories = await Promise.all(
-        Object.entries(NUCLEO_VOCABULARIO).map(async ([category, words]) => {
-          const resolved = await Promise.all(words.map(async (word) => {
-            const { items } = await currentService.searchAsync({ search: word, language, limit: 1 });
-            const pictogram = items[0] || null;
-            return {
-              word,
-              pictogram: pictogram ? { id: pictogram.id, name: pictogram.name, imageUrl: pictogram.imageUrl, source: pictogram.source } : null,
-            };
-          }));
-          return [category, resolved];
-        }),
-      );
-      nucleoCache.set(language, Object.fromEntries(categories));
-    }
+    res.status(StatusCodes.OK).json(await resolveWordListAsync('nucleo', NUCLEO_VOCABULARIO, language));
+  } catch (error) {
+    next(error);
+  }
+});
 
-    res.status(StatusCodes.OK).json(nucleoCache.get(language));
+// item 38: un tablero por situacion (casa, escuela, salir, medico) en vez
+// del nucleo — vocabulario de "frontera", especifico de un contexto.
+router.get('/tableros/:nombre', authMiddleware, async (req, res, next) => {
+  try {
+    const words = TABLEROS_SITUACIONALES[req.params.nombre];
+    if (!words) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: `No existe el tablero '${req.params.nombre}'.` });
+    }
+    const language = req.query.language || req.query.lang || 'es';
+    const resolved = await resolveWordListAsync(`tablero.${req.params.nombre}`, { [req.params.nombre]: words }, language);
+    res.status(StatusCodes.OK).json(resolved[req.params.nombre]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/tableros', authMiddleware, async (req, res, next) => {
+  try {
+    res.status(StatusCodes.OK).json(Object.keys(TABLEROS_SITUACIONALES));
   } catch (error) {
     next(error);
   }

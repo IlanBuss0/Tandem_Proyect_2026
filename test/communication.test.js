@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createUtterance, utteranceToText, serializeUtterance, deserializeUtterance } from '../src/modules/communication/utterance.js';
-import { NUCLEO_VOCABULARIO, getAllNucleoWords, getNucleoCategories } from '../src/modules/communication/nucleo-vocabulario.js';
+import { NUCLEO_VOCABULARIO, getAllNucleoWords, getNucleoCategories, TABLEROS_SITUACIONALES, getSituationalBoardNames } from '../src/modules/communication/nucleo-vocabulario.js';
 
 // Modelo de enunciado (Sesion 11): "frase = lista ordenada de tokens de
 // pictograma o texto". Lo necesitan el comunicador, el modo "no puedo
@@ -66,5 +66,21 @@ test('getNucleoCategories: devuelve las claves del catalogo', () => {
 test('NUCLEO_VOCABULARIO: ninguna categoria esta vacia', () => {
   for (const [category, words] of Object.entries(NUCLEO_VOCABULARIO)) {
     assert.ok(words.length > 0, `${category} no puede estar vacia`);
+  }
+});
+
+// Tableros situacionales (Sesion 12, item 38)
+
+test('getSituationalBoardNames: incluye los 4 tableros base', () => {
+  const names = getSituationalBoardNames();
+  assert.ok(names.includes('casa'));
+  assert.ok(names.includes('escuela'));
+  assert.ok(names.includes('salir'));
+  assert.ok(names.includes('medico'));
+});
+
+test('TABLEROS_SITUACIONALES: ningun tablero esta vacio', () => {
+  for (const [board, words] of Object.entries(TABLEROS_SITUACIONALES)) {
+    assert.ok(words.length > 0, `${board} no puede estar vacio`);
   }
 });

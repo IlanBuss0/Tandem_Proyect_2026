@@ -33,3 +33,18 @@ export function getAllNucleoWords() {
 export function getNucleoCategories() {
   return Object.keys(NUCLEO_VOCABULARIO);
 }
+
+// Tableros por situacion (item 38): a diferencia del nucleo (siempre
+// disponible, son las palabras que mas se repiten en general), estos son
+// vocabularios de "frontera" — especificos de un contexto puntual. Se
+// muestran en vez del nucleo cuando se elige una situacion, no ademas.
+export const TABLEROS_SITUACIONALES = Object.freeze({
+  casa: ['comer', 'dormir', 'bañarse', 'television', 'jugar', 'living', 'cocina', 'cuarto', 'mascota', 'ordenar'],
+  escuela: ['maestra', 'compañero', 'recreo', 'tarea', 'cuaderno', 'lapiz', 'guardapolvo', 'formar', 'examen', 'clase'],
+  salir: ['colectivo', 'auto', 'caminar', 'plaza', 'shopping', 'cine', 'plata', 'boleto', 'esperar', 'llegar'],
+  medico: ['doctor', 'dolor', 'pastilla', 'inyeccion', 'consultorio', 'enfermera', 'turno', 'sala de espera', 'curita', 'termometro'],
+});
+
+export function getSituationalBoardNames() {
+  return Object.keys(TABLEROS_SITUACIONALES);
+}
