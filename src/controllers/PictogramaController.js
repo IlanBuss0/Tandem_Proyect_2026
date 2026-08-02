@@ -11,6 +11,7 @@ import { upload } from '../middlewares/upload.middleware.js';
 import PictogramizationService, { MAX_PHRASES_PER_REQUEST } from '../services/PictogramizationService.js';
 import PersonalVocabularyStore from '../modules/pictograms/personal-vocabulary.js';
 import StylePreferenceStore from '../modules/pictograms/style-preference.js';
+import NotificationProducerService from '../services/NotificationProducerService.js';
 
 const router = Router();
 const currentService = new PictogramaService();
@@ -18,6 +19,7 @@ const aiService = new AiPictogramService();
 const pictogramizationService = new PictogramizationService();
 const personalVocabularyStore = new PersonalVocabularyStore();
 const stylePreferenceStore = new StylePreferenceStore();
+const notificationProducerService = new NotificationProducerService();
 
 const authIfTargetPerteneciente = (req, res, next) => {
   const targetPertenecienteId = req.query.targetPertenecienteId || req.query.id_perteneciente_destino;
@@ -127,18 +129,49 @@ router.post('/pictogramize', authMiddleware, csrfMiddleware, async (req, res, ne
 // sin gastar Groq ni volver a buscar en el catalogo. De paso, tambien queda
 // registrado el estilo visual de lo elegido, para preferirlo en futuros
 // matches automaticos aunque sea de otro texto.
+// `targetUsuarioId` (Sesion 8, circuito de correccion): un tutor puede
+// corregir el pictograma de un perteneciente que tutela, no solo el suyo
+// propio. Se autoriza igual que cualquier otra escritura sobre "Mi dia"
+// (mismo permiso, mismo allowTutor:true que ya usaba el guardado de
+// rutinas) y se avisa al perteneciente por notificacion.
 router.post('/vocabulary', authMiddleware, csrfMiddleware, async (req, res, next) => {
   try {
-    const { text, pictogramId } = req.body || {};
+    const { text, pictogramId, targetUsuarioId } = req.body || {};
     if (typeof text !== 'string' || !text.trim() || !pictogramId) {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: 'text y pictogramId son obligatorios.' });
     }
 
-    await personalVocabularyStore.rememberAsync(req.user.id, text, pictogramId);
+    let ownerUsuarioId = req.user.id;
+    let isCorrectionForOther = false;
+    if (targetUsuarioId && Number(targetUsuarioId) !== Number(req.user.id)) {
+      await AuthorizationService.assertCanUsePertenecienteFeatureByUsuarioId(
+        req.user.id,
+        Number(targetUsuarioId),
+        PERTENECIENTE_PERMISSIONS.USAR_MI_DIA,
+      );
+      ownerUsuarioId = Number(targetUsuarioId);
+      isCorrectionForOther = true;
+    }
+
+    await personalVocabularyStore.rememberAsync(ownerUsuarioId, text, pictogramId);
 
     const pictogram = await currentService.getByIdAsync(pictogramId);
     if (pictogram?.visualStyle) {
-      await stylePreferenceStore.registerChoiceAsync(req.user.id, pictogram.visualStyle);
+      await stylePreferenceStore.registerChoiceAsync(ownerUsuarioId, pictogram.visualStyle);
+    }
+
+    if (isCorrectionForOther) {
+      // reference_id en la tabla notificaciones es INTEGER: el id de un
+      // pictograma es un string compuesto ("mulberry:shower"), no un
+      // numero, asi que no entra ahi. Sin referencia numerica valida, se
+      // omite en vez de mandar un valor que rompe el INSERT en silencio.
+      await notificationProducerService.createAsync({
+        recipientUserId: ownerUsuarioId,
+        actorUserId: req.user.id,
+        typeName: 'Sistema',
+        title: 'Tu tutor corrigió un pictograma',
+        body: `Ahora "${text}" se muestra con un pictograma distinto.`,
+      });
     }
 
     res.status(StatusCodes.OK).json({ message: 'Vocabulario actualizado.' });
