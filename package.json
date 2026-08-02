@@ -23,6 +23,7 @@
     "test:auth-register": "node --test test/auth-register.test.js",
     "test:pictogram-licenses": "node --test test/pictogram-licenses.test.js",
     "test:pictogramization": "node --test test/pictogramization.test.js",
+    "test:authorization-usuario-config": "node --test test/authorization-usuario-config.test.js",
     "seed:permissions": "node scripts/seed-permission-catalogs.mjs",
     "db:invites-vinculo": "node scripts/create-invites-vinculo-table.mjs",
     "db:invites-vinculo-profesional": "node scripts/create-invites-vinculo-profesional-table.mjs",

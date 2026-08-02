@@ -277,6 +277,30 @@ class AuthorizationService {
     throw new AppError('No autorizado para acceder a este recurso', 403);
   }
 
+  /**
+   * Igual que assertCanReadPertenecienteResource pero recibiendo el ID DE
+   * USUARIO del target en vez del id_perteneciente — es lo que necesitan
+   * las rutas de configuraciones_usuarios (routines.mi-dia, calendar.events,
+   * emotion:*), donde el recurso esta indexado por id_usuario, no por
+   * id_perteneciente. Se resuelve idUsuario->perteneciente y se delega.
+   *
+   * Si el usuario objetivo no tiene un perfil de perteneciente asociado
+   * (p.ej. es otro tutor/profesional sin relacion), no hay forma de que sea
+   * legitimo leerlo salvo que sea uno mismo.
+   */
+  async assertCanReadUsuarioConfig(idUsuario, targetIdUsuario) {
+    if (Number(idUsuario) === Number(targetIdUsuario)) return this.allow();
+
+    const perteneciente = await AuthorizationRepository.getPertenecienteByUsuarioId(targetIdUsuario);
+    if (!perteneciente) throw new AppError('No autorizado para acceder a este recurso', 403);
+
+    return await this.assertCanReadPertenecienteResource(
+      idUsuario,
+      perteneciente.id,
+      PROFESIONAL_PERMISSIONS.VER_HISTORIAL,
+    );
+  }
+
   async assertCanWritePertenecienteResource(idUsuario, idPerteneciente, options = {}) {
     const {
       pertenecientePermissionName = null,
@@ -565,6 +589,14 @@ class AuthorizationService {
         return AUTH_ACTIONS.PERTENECIENTE_EMOCIONES_REGISTRAR;
       case PERTENECIENTE_PERMISSIONS.USAR_PICTOGRAMAS:
         return AUTH_ACTIONS.PERTENECIENTE_PICTOGRAMAS_USAR;
+      case PERTENECIENTE_PERMISSIONS.USAR_CHAT:
+        return AUTH_ACTIONS.PERTENECIENTE_CHAT_USAR;
+      case PERTENECIENTE_PERMISSIONS.ENVIAR_MENSAJES:
+        return AUTH_ACTIONS.PERTENECIENTE_CHAT_ENVIAR;
+      case PERTENECIENTE_PERMISSIONS.CHATEAR_CON_PROFESIONAL:
+        return AUTH_ACTIONS.PERTENECIENTE_CHAT_PROFESIONAL_ENVIAR;
+      case PERTENECIENTE_PERMISSIONS.GASTAR_PUNTOS:
+        return AUTH_ACTIONS.PERTENECIENTE_PUNTOS_GASTAR;
       default:
         throw new AppError(`No existe accion para el permiso ${permissionName}`, 500);
     }

@@ -37,15 +37,34 @@ async function assertCanWriteConfig(req, entity) {
   );
 }
 
+// Los ids de usuario que el que llama puede leer: el suyo propio, mas los
+// pertenecientes que tutela o atiende como profesional. Reusa
+// getPermissionContext (ya cacheado 60s) en vez de armar SQL nueva.
+async function getReadableUsuarioIdsAsync(idUsuario) {
+  const context = await AuthorizationService.getPermissionContext(idUsuario);
+  const ids = new Set([Number(idUsuario)]);
+  for (const p of context.pertenecientes || []) {
+    if (p.usuario?.id) ids.add(Number(p.usuario.id));
+  }
+  for (const v of context.vinculos || []) {
+    if (v.perteneciente?.usuario?.id) ids.add(Number(v.perteneciente.usuario.id));
+  }
+  return ids;
+}
+
+// Estas 4 rutas GET estaban sin ningun chequeo de propiedad: cualquier
+// usuario logueado (el middleware global de /api ya autentica, pero eso
+// solo prueba QUIEN sos, no QUE podes ver) podia pedir la configuracion de
+// cualquier OTRO usuario, incluidos sus registros emocionales en texto
+// libre. Se arregla escopeando por los ids de usuario que el que llama
+// tiene derecho a leer (el mismo, o un perteneciente que tutela/atiende).
 router.get('', async (req, res) => {
   try {
     console.log('ConfiguracionUsuarioController.getAll');
+    const readableIds = await getReadableUsuarioIdsAsync(req.user.id);
     const r = await currentService.getAllAsync();
-    if (r != null) {
-      res.status(StatusCodes.OK).json(r);
-    } else {
-      res.status(StatusCodes.INTERNAL_SERVER_ERROR).send('Error interno.');
-    }
+    const scoped = (r || []).filter((row) => readableIds.has(Number(row.id_usuario)));
+    res.status(StatusCodes.OK).json(scoped);
   } catch (error) {
     console.log(error);
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
@@ -56,11 +75,12 @@ router.get('/usuario/:idUsuario', async (req, res) => {
   try {
     const idUsuario = parseInt(req.params.idUsuario);
     console.log(`ConfiguracionUsuarioController.getByUsuario(${idUsuario})`);
+    await AuthorizationService.assertCanReadUsuarioConfig(req.user.id, idUsuario);
     const r = await currentService.getByUsuarioIdAsync(idUsuario);
     res.status(StatusCodes.OK).json(r ?? []);
   } catch (error) {
     console.log(error);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
+    res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
   }
 });
 
@@ -69,6 +89,7 @@ router.get('/usuario/:idUsuario/:clave', async (req, res) => {
     const idUsuario = parseInt(req.params.idUsuario);
     const clave = decodeURIComponent(req.params.clave);
     console.log(`ConfiguracionUsuarioController.getByUsuarioAndClave(${idUsuario}, ${clave})`);
+    await AuthorizationService.assertCanReadUsuarioConfig(req.user.id, idUsuario);
     const r = await currentService.getByUsuarioAndClaveAsync(idUsuario, clave);
     if (r != null) {
       res.status(StatusCodes.OK).json(r);
@@ -77,7 +98,7 @@ router.get('/usuario/:idUsuario/:clave', async (req, res) => {
     }
   } catch (error) {
     console.log(error);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
+    res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
   }
 });
 
@@ -86,14 +107,14 @@ router.get('/:id', async (req, res) => {
     const id = parseInt(req.params.id);
     console.log(`ConfiguracionUsuarioController.getById(${id})`);
     const r = await currentService.getByIdAsync(id);
-    if (r != null) {
-      res.status(StatusCodes.OK).json(r);
-    } else {
-      res.status(StatusCodes.NOT_FOUND).send(`No se encontro la configuracion con id: ${id}.`);
+    if (r == null) {
+      return res.status(StatusCodes.NOT_FOUND).send(`No se encontro la configuracion con id: ${id}.`);
     }
+    await AuthorizationService.assertCanReadUsuarioConfig(req.user.id, r.id_usuario);
+    res.status(StatusCodes.OK).json(r);
   } catch (error) {
     console.log(error);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
+    res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
   }
 });
 

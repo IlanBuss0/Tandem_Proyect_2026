@@ -1,3 +1,22 @@
+// Checklist para agregar un permiso de perteneciente nuevo (Sesion 6: esto
+// ya se rompio una vez — USAR_CHAT existia aca pero faltaba en 4 lugares
+// mas, y las rutas que lo usaban tiraban 500 en vez de autorizar):
+//
+// 1. Agregarlo a PERTENECIENTE_PERMISSIONS (aca abajo).
+// 2. Agregarle su accion en AUTH_ACTIONS (aca abajo), formato
+//    'perteneciente.<algo>.<verbo>'.
+// 3. Mapear el permiso -> accion en
+//    AuthorizationService.actionForPertenecientePermission() (el switch
+//    tira 500 si falta un caso, no lo deja pasar en silencio — pero solo
+//    en tiempo de ejecucion, no en tiempo de compilacion).
+// 4. Agregarle su caso en el switch de AuthorizationService.can().
+// 5. Agregar el default para AUTOGESTIONADO y TUTELADO en
+//    PERTENECIENTE_DEFAULTS (aca abajo).
+// 6. Espejarlo en el frontend: src/hooks/usePermissions.ts
+//    (PERTENECIENTE_PERMISSIONS) — no hay chequeo automatico de que estos
+//    dos objetos esten sincronizados entre backend y frontend.
+// 7. Si el permiso gatea una tab/UI nueva del tutor, agregarla a la UI de
+//    gestion de permisos (TutorConnections.tsx en el frontend).
 export const PERTENECIENTE_PERMISSIONS = Object.freeze({
   EDITAR_PERFIL: 'EditarPerfil',
   EDITAR_PERFIL_SENSIBLE: 'EditarPerfilSensible',
