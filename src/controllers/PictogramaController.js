@@ -15,6 +15,7 @@ import NotificationProducerService from '../services/NotificationProducerService
 import UsageEventService from '../services/UsageEventService.js';
 import { USAGE_EVENT_TYPES } from '../modules/usage/event-types.js';
 import { VISUAL_STYLES } from '../modules/pictograms/visual-styles.js';
+import { NUCLEO_VOCABULARIO } from '../modules/communication/nucleo-vocabulario.js';
 
 const router = Router();
 const currentService = new PictogramaService();
@@ -189,6 +190,38 @@ router.post('/vocabulary', authMiddleware, csrfMiddleware, async (req, res, next
     }
 
     res.status(StatusCodes.OK).json({ message: 'Vocabulario actualizado.' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Vocabulario nucleo resuelto (Sesion 11, item 37): contenido estatico
+// (las ~80 palabras de nucleo-vocabulario.js no cambian por request), asi
+// que se resuelve una vez por idioma y se sirve de memoria despues. Es SQL
+// contra el catalogo (searchAsync), no Groq: no hay cuota que cuidar aca.
+const nucleoCache = new Map();
+
+router.get('/nucleo', authMiddleware, async (req, res, next) => {
+  try {
+    const language = req.query.language || req.query.lang || 'es';
+    if (!nucleoCache.has(language)) {
+      const categories = await Promise.all(
+        Object.entries(NUCLEO_VOCABULARIO).map(async ([category, words]) => {
+          const resolved = await Promise.all(words.map(async (word) => {
+            const { items } = await currentService.searchAsync({ search: word, language, limit: 1 });
+            const pictogram = items[0] || null;
+            return {
+              word,
+              pictogram: pictogram ? { id: pictogram.id, name: pictogram.name, imageUrl: pictogram.imageUrl, source: pictogram.source } : null,
+            };
+          }));
+          return [category, resolved];
+        }),
+      );
+      nucleoCache.set(language, Object.fromEntries(categories));
+    }
+
+    res.status(StatusCodes.OK).json(nucleoCache.get(language));
   } catch (error) {
     next(error);
   }
