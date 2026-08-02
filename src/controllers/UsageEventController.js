@@ -5,6 +5,8 @@ import UsageEventService from '../services/UsageEventService.js';
 import AuthorizationService from '../services/AuthorizationService.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { csrfMiddleware } from '../middlewares/csrf.middleware.js';
+import { buildVocabularyReport } from '../modules/usage/vocabulary-report.js';
+import { USAGE_EVENT_TYPES } from '../modules/usage/event-types.js';
 
 const router = Router();
 const usageEventService = new UsageEventService();
@@ -50,6 +52,24 @@ router.get('/usuario/:idUsuario', authMiddleware, async (req, res, next) => {
       limit: req.query.limit,
     });
     res.status(StatusCodes.OK).json(events);
+  } catch (error) {
+    res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
+  }
+});
+
+// Informe de vocabulario (Sesion 19, item 42): que palabras del nucleo
+// (Sesion 11) uso esta persona en sus enunciados hablados, y cuales nunca
+// uso. Mismo guard de lectura que el resto de los endpoints de usuario.
+router.get('/usuario/:idUsuario/informe-vocabulario', authMiddleware, async (req, res, next) => {
+  try {
+    const idUsuario = parseInt(req.params.idUsuario, 10);
+    await AuthorizationService.assertCanReadUsuarioConfig(req.user.id, idUsuario);
+
+    const events = await usageEventService.getForUsuarioAsync(idUsuario, {
+      tipoEvento: USAGE_EVENT_TYPES.ENUNCIADO_HABLADO,
+      limit: 500,
+    });
+    res.status(StatusCodes.OK).json(buildVocabularyReport(events));
   } catch (error) {
     res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
   }
