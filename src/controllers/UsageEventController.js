@@ -5,6 +5,7 @@ import UsageEventService from '../services/UsageEventService.js';
 import AuthorizationService from '../services/AuthorizationService.js';
 import ConfiguracionUsuarioService from '../services/ConfiguracionUsuarioService.js';
 import CalendarEventService from '../services/CalendarEventService.js';
+import MemoryProfileService from '../services/MemoryProfileService.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { csrfMiddleware } from '../middlewares/csrf.middleware.js';
 import { buildVocabularyReport } from '../modules/usage/vocabulary-report.js';
@@ -17,6 +18,7 @@ const router = Router();
 const usageEventService = new UsageEventService();
 const configuracionUsuarioService = new ConfiguracionUsuarioService();
 const calendarEventService = new CalendarEventService();
+const memoryProfileService = new MemoryProfileService();
 
 // Registro de uso (Sesion 9): siempre se registra a nombre de QUIEN LLAMA
 // (req.user.id) — un perteneciente registra su propio uso. No hay "en
@@ -127,6 +129,23 @@ router.get('/usuario/:idUsuario/evolucion', authMiddleware, async (req, res, nex
 
     const events = await usageEventService.getForUsuarioAsync(idUsuario, { limit: 200 });
     res.status(StatusCodes.OK).json(buildEvolutionReport(events));
+  } catch (error) {
+    res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
+  }
+});
+
+// Perfil de memoria (Sesion 25): todo lo que la app ya sabe de esta
+// persona (vocabulario, patrones, evolucion, pictogramas que mas usa,
+// tarjetas de autonomia que mas le sirven), en un solo lugar, cacheado
+// 1h. 100% derivado de datos que ya se registran — nada de carga manual.
+// Mismo guard de lectura que el resto de este controller.
+router.get('/usuario/:idUsuario/memoria', authMiddleware, async (req, res, next) => {
+  try {
+    const idUsuario = parseInt(req.params.idUsuario, 10);
+    await AuthorizationService.assertCanReadUsuarioConfig(req.user.id, idUsuario);
+
+    const profile = await memoryProfileService.getProfileAsync(idUsuario);
+    res.status(StatusCodes.OK).json(profile);
   } catch (error) {
     res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
   }
