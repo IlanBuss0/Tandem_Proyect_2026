@@ -30,6 +30,8 @@
     "test:vocabulary-report": "node --test test/vocabulary-report.test.js",
     "test:pattern-detection": "node --test test/pattern-detection.test.js",
     "test:config-parsing": "node --test test/config-parsing.test.js",
+    "test:emotion-sentiment": "node --test test/emotion-sentiment.test.js",
+    "test:evolution": "node --test test/evolution.test.js",
     "seed:permissions": "node scripts/seed-permission-catalogs.mjs",
     "db:invites-vinculo": "node scripts/create-invites-vinculo-table.mjs",
     "db:invites-vinculo-profesional": "node scripts/create-invites-vinculo-profesional-table.mjs",

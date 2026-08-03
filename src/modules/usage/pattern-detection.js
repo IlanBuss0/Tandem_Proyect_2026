@@ -9,16 +9,9 @@
 // observaciones antes de reportar cualquier patron. Sin piso, un patron
 // de 2 datos es ruido disfrazado de insight — y presentarselo a una
 // familia como "descubrimos un patron" es peor que no decir nada.
-const MIN_OBSERVATIONS = 3;
-const NEGATIVE_EMOTIONS = new Set(['Ansioso', 'Nervioso', 'Frustrado', 'Enojado', 'Triste', 'Preocupado']);
-const POSITIVE_EMOTIONS = new Set(['Contento', 'Feliz', 'Tranquilo', 'Motivado', 'Orgulloso']);
+import { sentimentScore } from './emotion-sentiment.js';
 
-function sentimentScore(emotions) {
-  const relevant = emotions.filter((e) => NEGATIVE_EMOTIONS.has(e.emotion) || POSITIVE_EMOTIONS.has(e.emotion));
-  if (relevant.length === 0) return null;
-  const positive = relevant.filter((e) => POSITIVE_EMOTIONS.has(e.emotion)).length;
-  return { positiveRatio: positive / relevant.length, sampleSize: relevant.length };
-}
+const MIN_OBSERVATIONS = 3;
 
 /**
  * Item 41: por tipo de evento de calendario, la proporcion de emociones

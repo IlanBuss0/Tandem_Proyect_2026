@@ -10,6 +10,7 @@ import { buildVocabularyReport } from '../modules/usage/vocabulary-report.js';
 import { USAGE_EVENT_TYPES } from '../modules/usage/event-types.js';
 import { parseCalendarEventsFromConfigs, parseEmotionsFromConfigs } from '../modules/usage/config-parsing.js';
 import { detectEventTypePatterns, evaluateAnticipationSupport } from '../modules/usage/pattern-detection.js';
+import { buildEvolutionReport } from '../modules/usage/evolution.js';
 
 const router = Router();
 const usageEventService = new UsageEventService();
@@ -108,6 +109,21 @@ router.get('/usuario/:idUsuario/patrones', authMiddleware, async (req, res, next
       eventTypePatterns: detectEventTypePatterns(events, emotions),
       anticipationSupport: evaluateAnticipationSupport(events, emotions, socialStoryViewedEventIds),
     });
+  } catch (error) {
+    res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
+  }
+});
+
+// Evolucion en el tiempo (Sesion 21, item 44): pasos completados y animo
+// semana a semana, ultimas 8 semanas. Sin piso minimo (a diferencia de
+// /patrones): esto describe lo que paso, no afirma una relacion causal.
+router.get('/usuario/:idUsuario/evolucion', authMiddleware, async (req, res, next) => {
+  try {
+    const idUsuario = parseInt(req.params.idUsuario, 10);
+    await AuthorizationService.assertCanReadUsuarioConfig(req.user.id, idUsuario);
+
+    const events = await usageEventService.getForUsuarioAsync(idUsuario, { limit: 200 });
+    res.status(StatusCodes.OK).json(buildEvolutionReport(events));
   } catch (error) {
     res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
   }
