@@ -42,6 +42,22 @@ test('computeProfileAsync: une los pictogramas frecuentes por uso automatico con
   assert.deepEqual(new Set(profile.frequentPictogramIds), new Set(['mulberry:agua', 'mulberry:dientes']));
 });
 
+test('getFrequentPictogramIdsAsync: metodo chico y separado, sin tocar calendario ni eventos_uso', async () => {
+  const service = buildService();
+  service.MemoryProfileRepository.getFrequentPictogramIdsAsync = async () => ['mulberry:agua'];
+  service.PersonalVocabularyStore.getAsync = async () => ({ dientes: 'mulberry:dientes' });
+  let calendarCalled = false;
+  let usageCalled = false;
+  service.CalendarEventService.getForUsuarioAsync = async () => { calendarCalled = true; return []; };
+  service.UsageEventService.getForUsuarioAsync = async () => { usageCalled = true; return []; };
+
+  const ids = await service.getFrequentPictogramIdsAsync(17);
+
+  assert.deepEqual(new Set(ids), new Set(['mulberry:agua', 'mulberry:dientes']));
+  assert.equal(calendarCalled, false, 'no deberia consultar calendario para este dato chico');
+  assert.equal(usageCalled, false, 'no deberia consultar eventos_uso para este dato chico');
+});
+
 test('computeProfileAsync: pasa los eventos de tarjeta_autonomia_usada a computeAutonomyCardUsage', async () => {
   const service = buildService();
   service.UsageEventService.getForUsuarioAsync = async (idUsuario, options) => {

@@ -84,14 +84,23 @@ export function scoreConceptMatch(concept, pictogram) {
 
 // Compara dos candidatos del mismo nivel para el mismo concepto. `current`
 // puede ser null (todavia no hay ninguno elegido). El desempate en score
-// empatado es primero el estilo visual preferido del usuario (Sesion 2:
-// "preferencia de estilo visual por persona" — el catalogo suele tener el
-// mismo concepto dibujado en varios estilos, y conviene mostrar siempre el
-// que esa persona ya eligio antes) y despues el titulo mas corto, mas
-// especifico.
-function isBetterCandidate(candidate, current, preferredStyle) {
+// empatado tiene 3 niveles, del mas al menos especifico:
+//   1. Perfil de memoria (Sesion 25): si ESTE pictograma puntual ya es uno
+//      que la persona reconoce (uso repetido o correccion manual), gana —
+//      es una señal mas fuerte que "mismo estilo en general".
+//   2. Estilo visual preferido (Sesion 2) — el catalogo suele tener el
+//      mismo concepto dibujado en varios estilos, y conviene mostrar
+//      siempre el que esa persona ya eligio antes.
+//   3. Titulo mas corto, mas especifico.
+function isBetterCandidate(candidate, current, preferredStyle, frequentPictogramIds) {
   if (!current) return true;
   if (candidate.score !== current.score) return candidate.score > current.score;
+
+  if (frequentPictogramIds && frequentPictogramIds.size > 0) {
+    const candidateIsFrequent = frequentPictogramIds.has(candidate.pictogram.id);
+    const currentIsFrequent = frequentPictogramIds.has(current.pictogram.id);
+    if (candidateIsFrequent !== currentIsFrequent) return candidateIsFrequent;
+  }
 
   if (preferredStyle) {
     const candidateMatches = candidate.pictogram.visualStyle === preferredStyle;
@@ -107,15 +116,17 @@ function isBetterCandidate(candidate, current, preferredStyle) {
  * candidatos ya buscados. Recorre los conceptos en el orden dado (el motor
  * de extraccion los ordena del mas al menos representativo) y devuelve el
  * primer "alta"; si no hay ninguno, el "media" de mayor score. Ante un
- * empate de score, se prefiere el estilo visual que el usuario ya eligio
- * antes (`preferredStyle`, opcional).
+ * empate de score, se prefiere primero un pictograma que la persona ya usa
+ * (`frequentPictogramIds`, Sesion 25) y despues el estilo visual que ya
+ * eligio antes (`preferredStyle`).
  *
  * @param {string[]} concepts
- * @param {Map<string, Array<{name: string, tags?: string[], visualStyle?: string|null}>>} candidatesByConcept
+ * @param {Map<string, Array<{id: string, name: string, tags?: string[], visualStyle?: string|null}>>} candidatesByConcept
  * @param {string|null} [preferredStyle]
+ * @param {Set<string>} [frequentPictogramIds]
  * @returns {{ pictogram, confidence: 'alta'|'media', concept: string, matchedOn: string, score: number } | null}
  */
-export function pickBestMatch(concepts, candidatesByConcept, preferredStyle = null) {
+export function pickBestMatch(concepts, candidatesByConcept, preferredStyle = null, frequentPictogramIds = new Set()) {
   let bestAlta = null;
   let bestMedia = null;
 
@@ -126,9 +137,9 @@ export function pickBestMatch(concepts, candidatesByConcept, preferredStyle = nu
       if (level === 'baja') continue;
 
       const entry = { pictogram, confidence: level, concept, matchedOn, score };
-      if (level === 'alta' && isBetterCandidate(entry, bestAlta, preferredStyle)) {
+      if (level === 'alta' && isBetterCandidate(entry, bestAlta, preferredStyle, frequentPictogramIds)) {
         bestAlta = entry;
-      } else if (level === 'media' && isBetterCandidate(entry, bestMedia, preferredStyle)) {
+      } else if (level === 'media' && isBetterCandidate(entry, bestMedia, preferredStyle, frequentPictogramIds)) {
         bestMedia = entry;
       }
     }

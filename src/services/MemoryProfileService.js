@@ -31,6 +31,30 @@ export default class MemoryProfileService {
     this.StylePreferenceStore = new StylePreferenceStore();
   }
 
+  // Pieza chica y cacheada por separado, a proposito: la usa el motor de
+  // pictogramizacion (concept-matching.js) en el camino caliente de CADA
+  // resolucion de frase — rutinas, calendario, comunicador, "Explicame
+  // esto". Pedir el perfil completo (patrones, evolucion, vocabulario) ahi
+  // seria carga innecesaria en algo que corre todo el tiempo. Union entre
+  // lo que supero el piso de uso automatico (MemoryProfileRepository) y
+  // las correcciones manuales (vocabulario personal, Sesion 2) — estas
+  // ultimas cuentan sin importar cuantas veces se repitan, alguien las
+  // eligio a mano a proposito.
+  getFrequentPictogramIdsAsync = async (idUsuario) => {
+    return await cacheService.getOrSet(
+      `memory-profile.usuario.${idUsuario}.pictogramas-frecuentes`,
+      async () => {
+        const [fromUsage, personalVocabulary] = await Promise.all([
+          this.MemoryProfileRepository.getFrequentPictogramIdsAsync(idUsuario),
+          this.PersonalVocabularyStore.getAsync(idUsuario),
+        ]);
+        const manuallyChosenIds = Object.values(personalVocabulary || {});
+        return Array.from(new Set([...fromUsage, ...manuallyChosenIds]));
+      },
+      CACHE_TTL_SECONDS,
+    );
+  };
+
   getProfileAsync = async (idUsuario) => {
     return await cacheService.getOrSet(
       `memory-profile.usuario.${idUsuario}`,
@@ -47,8 +71,7 @@ export default class MemoryProfileService {
       choiceEvents,
       tarjetaEvents,
       recentEvents,
-      frequentPictogramIdsFromUsage,
-      personalVocabulary,
+      frequentPictogramIds,
       preferredStyle,
     ] = await Promise.all([
       this.CalendarEventService.getForUsuarioAsync(idUsuario),
@@ -57,8 +80,7 @@ export default class MemoryProfileService {
       this.UsageEventService.getForUsuarioAsync(idUsuario, { tipoEvento: USAGE_EVENT_TYPES.PICTOGRAMA_ELEGIDO, limit: 1000 }),
       this.UsageEventService.getForUsuarioAsync(idUsuario, { tipoEvento: USAGE_EVENT_TYPES.TARJETA_AUTONOMIA_USADA, limit: 200 }),
       this.UsageEventService.getForUsuarioAsync(idUsuario, { limit: 200 }),
-      this.MemoryProfileRepository.getFrequentPictogramIdsAsync(idUsuario),
-      this.PersonalVocabularyStore.getAsync(idUsuario),
+      this.getFrequentPictogramIdsAsync(idUsuario),
       this.StylePreferenceStore.getPreferredStyleAsync(idUsuario),
     ]);
 
@@ -69,13 +91,6 @@ export default class MemoryProfileService {
         .filter((e) => e.entidad_tipo === 'historia_social' && e.entidad_id)
         .map((e) => String(e.entidad_id)),
     );
-
-    // Las correcciones manuales (vocabulario personal) son una señal fuerte
-    // por si solas, sin importar cuantas veces se repitan — alguien las
-    // eligio a mano a proposito. Se unen (no reemplazan) a los pictogramas
-    // que superaron el piso de uso automatico.
-    const manuallyChosenIds = Object.values(personalVocabulary || {});
-    const frequentPictogramIds = Array.from(new Set([...frequentPictogramIdsFromUsage, ...manuallyChosenIds]));
 
     return {
       frequentPictogramIds,

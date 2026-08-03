@@ -5,6 +5,7 @@ import { pickBestMatch } from '../modules/pictograms/concept-matching.js';
 import PersonalVocabularyStore from '../modules/pictograms/personal-vocabulary.js';
 import StylePreferenceStore from '../modules/pictograms/style-preference.js';
 import PictogramizationMemoRepository from '../repositories/PictogramizationMemoRepository.js';
+import MemoryProfileService from './MemoryProfileService.js';
 
 // Unica responsabilidad de este servicio: orquestar "frase -> pictograma".
 // No sabe COMO se extraen conceptos (concept-extraction.js) ni COMO se
@@ -30,6 +31,7 @@ export default class PictogramizationService {
     this.PersonalVocabularyStore = new PersonalVocabularyStore();
     this.StylePreferenceStore = new StylePreferenceStore();
     this.PictogramizationMemoRepository = new PictogramizationMemoRepository();
+    this.MemoryProfileService = new MemoryProfileService();
     // Asignado en el constructor (no llamado directo del import) para poder
     // mockearlo por instancia en los tests, mismo patron que
     // `service.PictogramaRepository.searchAsync = async () => ...` en el
@@ -191,13 +193,21 @@ export default class PictogramizationService {
     // (alto contraste, por el setting de accesibilidad del usuario), gana
     // por encima del estilo aprendido por uso — es una necesidad, no una
     // preferencia que se pueda ignorar.
-    const preferredStyle = preferredStyleOverride || await this.StylePreferenceStore.getPreferredStyleAsync(userId);
+    // Sesion 25 (perfil de memoria): antes que el estilo, se prioriza un
+    // pictograma puntual que la persona ya reconoce. Metodo chico y
+    // cacheado aparte (getFrequentPictogramIdsAsync), no el perfil
+    // completo — esto corre en el camino caliente de cada resolucion.
+    const [preferredStyle, frequentPictogramIds] = await Promise.all([
+      preferredStyleOverride ? Promise.resolve(preferredStyleOverride) : this.StylePreferenceStore.getPreferredStyleAsync(userId),
+      userId ? this.MemoryProfileService.getFrequentPictogramIdsAsync(userId) : Promise.resolve([]),
+    ]);
+    const frequentPictogramIdSet = new Set(frequentPictogramIds);
 
     const resolvedResults = new Map(vocabularyResults);
     for (const item of items) {
       const uniqueIndex = textToIndex.get(normalizeSearchText(item.text));
       const concepts = conceptsByUniqueText[uniqueIndex] || [];
-      const best = pickBestMatch(concepts, candidatesByConcept, preferredStyle);
+      const best = pickBestMatch(concepts, candidatesByConcept, preferredStyle, frequentPictogramIdSet);
 
       const meetsMinConfidence = best && (minConfidence === 'media' || best.confidence === 'alta');
 

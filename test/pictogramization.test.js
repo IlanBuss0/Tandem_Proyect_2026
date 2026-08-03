@@ -105,6 +105,31 @@ test('pickBestMatch: ante un empate de score, gana el estilo visual preferido', 
   assert.equal(conPreferencia.pictogram.id, 'realista');
 });
 
+test('pickBestMatch: ante un empate de score, gana un pictograma que la persona ya reconoce (Sesion 25)', () => {
+  const candidatesByConcept = new Map([
+    ['agua', [
+      { id: 'nuevo-para-ella', name: 'agua', tags: [] },
+      { id: 'ya-lo-uso', name: 'agua', tags: [] },
+    ]],
+  ]);
+  const sinMemoria = pickBestMatch(['agua'], candidatesByConcept);
+  assert.equal(sinMemoria.pictogram.id, 'nuevo-para-ella');
+
+  const conMemoria = pickBestMatch(['agua'], candidatesByConcept, null, new Set(['ya-lo-uso']));
+  assert.equal(conMemoria.pictogram.id, 'ya-lo-uso');
+});
+
+test('pickBestMatch: el pictograma que ya reconoce gana incluso sobre el estilo preferido', () => {
+  const candidatesByConcept = new Map([
+    ['agua', [
+      { id: 'estilo-preferido', name: 'agua', tags: [], visualStyle: 'realista' },
+      { id: 'ya-lo-uso', name: 'agua', tags: [], visualStyle: 'ilustracion' },
+    ]],
+  ]);
+  const best = pickBestMatch(['agua'], candidatesByConcept, 'realista', new Set(['ya-lo-uso']));
+  assert.equal(best.pictogram.id, 'ya-lo-uso', 'reconocer el pictograma puntual pesa mas que el estilo general');
+});
+
 test('pickBestMatch: sin ningun match devuelve null', () => {
   const candidatesByConcept = new Map([['xyz', [{ id: '1', name: 'algo totalmente distinto', tags: [] }]]]);
   const best = pickBestMatch(['xyz'], candidatesByConcept);
@@ -139,6 +164,7 @@ function buildService() {
   service.PictogramizationMemoRepository.ensureSchemaAsync = async () => {};
   service.PictogramizationMemoRepository.getManyAsync = async () => new Map();
   service.PictogramizationMemoRepository.upsertManyAsync = async () => {};
+  service.MemoryProfileService.getFrequentPictogramIdsAsync = async () => [];
   return service;
 }
 
@@ -317,6 +343,37 @@ test('pictogramizeAsync: si el pictograma del vocabulario ya no existe, resuelve
   const result = await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'Ducharse' }], userId: 7 });
 
   assert.equal(result.results[0].pictogram.id, 'auto-1');
+});
+
+test('pictogramizeAsync: prioriza el pictograma frecuente del perfil de memoria sobre uno recien encontrado (Sesion 25)', async () => {
+  const service = buildService();
+  service.extractConceptsAsync = async () => ({ concepts: [['agua']], usedGroq: true, degraded: false, model: 'x' });
+  service.PictogramaService.searchAsync = buildCatalog({
+    agua: [
+      { id: 'nuevo-para-el', name: 'agua', imageUrl: 'x', source: 'MULBERRY', tags: [] },
+      { id: 'ya-lo-reconoce', name: 'agua', imageUrl: 'x', source: 'MULBERRY', tags: [] },
+    ],
+  });
+  service.MemoryProfileService.getFrequentPictogramIdsAsync = async (userId) => {
+    assert.equal(userId, 7);
+    return ['ya-lo-reconoce'];
+  };
+
+  const result = await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'agua' }], userId: 7 });
+
+  assert.equal(result.results[0].pictogram.id, 'ya-lo-reconoce');
+});
+
+test('pictogramizeAsync: sin userId, no pide el perfil de memoria (no rompe, no gasta la cache)', async () => {
+  const service = buildService();
+  service.extractConceptsAsync = async () => ({ concepts: [['agua']], usedGroq: true, degraded: false, model: 'x' });
+  service.PictogramaService.searchAsync = buildCatalog({ agua: [{ id: '1', name: 'agua', imageUrl: 'x', source: 'MULBERRY', tags: [] }] });
+  let called = false;
+  service.MemoryProfileService.getFrequentPictogramIdsAsync = async () => { called = true; return []; };
+
+  await service.pictogramizeAsync({ phrases: [{ id: '1', text: 'agua' }] });
+
+  assert.equal(called, false);
 });
 
 // --- Preferencia de estilo visual (Sesion 2) ---
