@@ -131,11 +131,16 @@ export default class AiPictogramService {
     await this.repository.ensureSchemaAsync();
   };
 
+  // usuarioId (ademas del id de perteneciente) para que consumidores que
+  // solo conocen el usuario de la persona (como TutorRoutinePictogramReview,
+  // Sesion 8) puedan resolver a que perteneciente generarle un pictograma
+  // sin tener que adivinar por nombre (Sesion 23, item 16).
   getTargetsAsync = async (userId) => {
     const context = await AuthorizationService.getPermissionContext(userId);
     if (context.tutor) {
       return (context.pertenecientes || []).map(item => ({
         id: item.id,
+        usuarioId: item.usuario?.id ?? null,
         name: `${item.usuario?.nombre || ''} ${item.usuario?.apellido || ''}`.trim() || item.usuario?.nombre_usuario,
       }));
     }
@@ -144,6 +149,7 @@ export default class AiPictogramService {
         .filter(item => item.vinculo?.fue_aprobado_por_tutor !== false)
         .map(item => ({
           id: item.perteneciente.id,
+          usuarioId: item.perteneciente.usuario?.id ?? null,
           name: `${item.perteneciente.usuario?.nombre || ''} ${item.perteneciente.usuario?.apellido || ''}`.trim()
             || item.perteneciente.usuario?.nombre_usuario,
         }));
