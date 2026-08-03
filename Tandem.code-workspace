@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "Tandem Backend",
+      "path": "."
+    },
+    {
+      "name": "Tandem Frontend",
+      "path": "frontend"
+    }
+  ]
+}
