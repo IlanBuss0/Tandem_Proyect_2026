@@ -21,6 +21,16 @@ export default class CalendarEventService {
     return await this.CalendarEventRepository.getForUsuarioAsync(idUsuario);
   };
 
+  // Frontend contexts (CalendarContext.tsx) llaman a updateEvent(id, patch)
+  // / deleteEvent(id) sin conocer el dueño del evento — este lookup permite
+  // resolverlo antes de la escritura sin cambiar esa firma.
+  getByIdAsync = async (id) => {
+    await this.ensureSchemaAsync();
+    const event = await this.CalendarEventRepository.getByIdAsync(id);
+    if (!event) throw new AppError('Evento no encontrado.', 404);
+    return event;
+  };
+
   createAsync = async (idUsuario, data) => {
     await this.ensureSchemaAsync();
     if (!data.titulo || !data.fecha || !data.hora) {

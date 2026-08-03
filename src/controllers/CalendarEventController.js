@@ -29,6 +29,16 @@ async function assertCanWriteCalendar(req, idUsuarioTarget) {
   );
 }
 
+router.get('/:id', authMiddleware, async (req, res) => {
+  try {
+    const event = await calendarEventService.getByIdAsync(req.params.id);
+    await AuthorizationService.assertCanReadUsuarioConfig(req.user.id, event.id_usuario);
+    res.status(StatusCodes.OK).json(event);
+  } catch (error) {
+    res.status(error.statusCode ?? StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
+  }
+});
+
 router.get('/usuario/:idUsuario', authMiddleware, async (req, res) => {
   try {
     const idUsuario = parseInt(req.params.idUsuario, 10);
