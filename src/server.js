@@ -36,6 +36,8 @@ import UbicacionHistorialController from './controllers/UbicacionHistorialContro
 import NotificacionController from './controllers/NotificacionController.js';
 import RoutineReminderController from './controllers/RoutineReminderController.js';
 import UsageEventController from './controllers/UsageEventController.js';
+import CalendarEventController from './controllers/CalendarEventController.js';
+import RoutineController from './controllers/RoutineController.js';
 import ContactoController from './controllers/ContactoController.js';
 import ChatController from './controllers/ChatController.js';
 import ParticipanteChatController from './controllers/ParticipanteChatController.js';
@@ -195,6 +197,8 @@ app.use('/api/ubicaciones-historiales', UbicacionHistorialController);
 app.use('/api/notificaciones', NotificacionController);
 app.use('/api/routine-reminders', RoutineReminderController);
 app.use('/api/eventos-uso', UsageEventController);
+app.use('/api/eventos-calendario', CalendarEventController);
+app.use('/api/rutinas', RoutineController);
 app.use('/api/contactos', ContactoController);
 app.use('/api/chats', ChatController);
 app.use('/api/participantes-chats', ParticipanteChatController);

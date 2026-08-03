@@ -32,6 +32,8 @@
     "test:config-parsing": "node --test test/config-parsing.test.js",
     "test:emotion-sentiment": "node --test test/emotion-sentiment.test.js",
     "test:evolution": "node --test test/evolution.test.js",
+    "test:calendar-events": "node --test test/calendar-events.test.js",
+    "test:routines": "node --test test/routines.test.js",
     "seed:permissions": "node scripts/seed-permission-catalogs.mjs",
     "db:invites-vinculo": "node scripts/create-invites-vinculo-table.mjs",
     "db:invites-vinculo-profesional": "node scripts/create-invites-vinculo-profesional-table.mjs",
