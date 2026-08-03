@@ -86,7 +86,14 @@ export default class PictogramaService {
     return await this.schemaReady;
   }
 
-  async searchAsync({ search, category, style, collection, language, limit, page, targetPertenecienteId }) {
+  // boostPictogramIds (Sesion 25, perfil de memoria): pictogramas que el
+  // llamador ya sabe que esta persona usa de verdad, para que aparezcan
+  // primero sin tocar el filtro. Se resuelve AFUERA de este service (en
+  // el controller) a proposito: PictogramaService no necesita saber que
+  // es un "perteneciente" ni como se resuelve su memoria, solo recibe una
+  // lista de ids. Ademas evita un ciclo de imports (MemoryProfileService
+  // depende, indirectamente, de este mismo archivo).
+  async searchAsync({ search, category, style, collection, language, limit, page, targetPertenecienteId, boostPictogramIds }) {
     await this.ensureSchemaAsync();
 
     const locale = normalizeLanguage(language);
@@ -96,10 +103,12 @@ export default class PictogramaService {
     const normalizedCategory = String(category || '').trim().toLowerCase();
     const normalizedStyle = String(style || '').trim().toLowerCase();
     const normalizedCollection = String(collection || '').trim().toLowerCase();
+    const boostIds = Array.isArray(boostPictogramIds) ? boostPictogramIds.filter(Boolean).sort() : [];
 
     const cacheKey = `pictogram.search.${locale}.${normalizeSearchText(searchText)}.${normalizedCategory}`
       + `.${normalizedStyle}.${normalizedCollection}`
-      + `.${normalizedLimit}.${normalizedPage}${targetPertenecienteId ? `.${targetPertenecienteId}` : ''}`;
+      + `.${normalizedLimit}.${normalizedPage}${targetPertenecienteId ? `.${targetPertenecienteId}` : ''}`
+      + `${boostIds.length > 0 ? `.boost:${boostIds.join(',')}` : ''}`;
     const cachedResult = await cacheService.get(cacheKey);
     if (cachedResult) return cachedResult;
 
@@ -123,6 +132,7 @@ export default class PictogramaService {
       limit: normalizedLimit,
       offset: (normalizedPage - 1) * normalizedLimit,
       targetPertenecienteId,
+      boostPictogramIds: boostIds,
     });
 
     const result = {

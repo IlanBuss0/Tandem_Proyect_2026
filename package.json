@@ -36,6 +36,7 @@
     "test:routines": "node --test test/routines.test.js",
     "test:memory-profile": "node --test test/memory-profile.test.js",
     "test:memory-profile-service": "node --test test/memory-profile-service.test.js",
+    "test:pictogram-memory-boost": "node --test test/pictogram-memory-boost.test.js",
     "seed:permissions": "node scripts/seed-permission-catalogs.mjs",
     "db:invites-vinculo": "node scripts/create-invites-vinculo-table.mjs",
     "db:invites-vinculo-profesional": "node scripts/create-invites-vinculo-profesional-table.mjs",

@@ -17,9 +17,13 @@ import { USAGE_EVENT_TYPES } from '../modules/usage/event-types.js';
 import { VISUAL_STYLES } from '../modules/pictograms/visual-styles.js';
 import { NUCLEO_VOCABULARIO, TABLEROS_SITUACIONALES } from '../modules/communication/nucleo-vocabulario.js';
 import { simplifyToLecturaFacilAsync, MAX_LECTURA_FACIL_CHARS } from '../modules/pictograms/lectura-facil.js';
+import MemoryProfileService from '../services/MemoryProfileService.js';
+import PertenecienteRepository from '../repositories/PertenecienteRepository.js';
 
 const router = Router();
 const currentService = new PictogramaService();
+const memoryProfileService = new MemoryProfileService();
+const pertenecienteRepository = new PertenecienteRepository();
 const aiService = new AiPictogramService();
 const pictogramizationService = new PictogramizationService();
 const personalVocabularyStore = new PersonalVocabularyStore();
@@ -283,10 +287,29 @@ router.get('/tableros', authMiddleware, async (req, res, next) => {
 router.get('', authIfTargetPerteneciente, async (req, res, next) => {
   try {
     const targetPertenecienteId = req.query.targetPertenecienteId || req.query.id_perteneciente_destino;
+    let targetIds = [];
     if (targetPertenecienteId) {
-      const targetIds = String(targetPertenecienteId).split(',').map(Number).filter(Boolean);
+      targetIds = String(targetPertenecienteId).split(',').map(Number).filter(Boolean);
       for (const targetId of targetIds) {
         await AuthorizationService.assertCanReadPertenecienteResource(req.user.id, targetId);
+      }
+    }
+
+    // Perfil de memoria (Sesion 25): solo tiene sentido personalizar cuando
+    // se pide el catalogo de UNA persona puntual (el caso normal — un
+    // perteneciente viendo el suyo, o un tutor/profesional viendo el de un
+    // perteneciente especifico). Con 0 o 2+ ids no hay "esta persona" clara
+    // a quien priorizarle nada, se sigue sin boost — nunca rompe, solo deja
+    // de personalizar.
+    let boostPictogramIds = [];
+    if (targetIds.length === 1) {
+      try {
+        const perteneciente = await pertenecienteRepository.getByIdAsync(targetIds[0]);
+        if (perteneciente?.id_usuario) {
+          boostPictogramIds = await memoryProfileService.getFrequentPictogramIdsAsync(perteneciente.id_usuario);
+        }
+      } catch {
+        boostPictogramIds = [];
       }
     }
 
@@ -299,6 +322,7 @@ router.get('', authIfTargetPerteneciente, async (req, res, next) => {
       limit: req.query.limit,
       page: req.query.page,
       targetPertenecienteId,
+      boostPictogramIds,
     });
 
     // Compatibilidad: solo quien pide `page` explicitamente (la UI con

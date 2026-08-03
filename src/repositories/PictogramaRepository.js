@@ -283,7 +283,7 @@ export default class PictogramaRepository {
     await BD.execute(`CREATE INDEX IF NOT EXISTS idx_favoritos_pictogramas_usuario ON favoritos_pictogramas (id_usuario, idioma, fecha_marcado DESC)`);
   };
 
-  searchAsync = async ({ search, category, style, collection, language, limit, offset = 0, targetPertenecienteId }) => {
+  searchAsync = async ({ search, category, style, collection, language, limit, offset = 0, targetPertenecienteId, boostPictogramIds }) => {
     const where = ["idioma = $1"];
     // El switch de la migracion de licencias (Fase 4): en modo comercial
     // solo se descubren pictogramas con uso_comercial_permitido = true.
@@ -351,6 +351,25 @@ export default class PictogramaRepository {
     // realmente referencia ("bind message supplies N, but prepared
     // statement requires M").
     let whereParamCount = params.length;
+
+    // Perfil de memoria (Sesion 25): si vienen pictogramas que esta persona
+    // ya usa de verdad, se anteponen al ORDER BY que ya exista (no lo
+    // reemplazan) — asi el filtro por categoria/estilo sigue funcionando
+    // igual, solo cambia el orden DENTRO de lo que ya matcheaba. Sin
+    // ninguna marca visual nueva: el pictograma simplemente aparece primero.
+    //
+    // El "id" que conoce el resto de la app (el que se guarda en
+    // rutina_items.id_pictograma, el que arma el perfil de memoria) NO es
+    // la columna bigint `id` — es COALESCE(origen_id, arasaac_id, id),
+    // exactamente la misma prioridad que normalizeRow() usa para el JSON
+    // de respuesta. Comparar contra la columna `id` cruda comparaba
+    // bigint contra texto (error de tipo, lo agarraron los tests).
+    let boostOrderBy = '';
+    const boostIds = Array.isArray(boostPictogramIds) ? boostPictogramIds.filter(Boolean) : [];
+    if (boostIds.length > 0) {
+      params.push(boostIds);
+      boostOrderBy = `CASE WHEN COALESCE(origen_id, arasaac_id::text, id::text) = ANY($${params.length}::text[]) THEN 0 ELSE 1 END,\n        `;
+    }
 
     if (searchText) {
       // Todas las comparaciones van sin acentos ni ñ, de los dos lados: asi
@@ -425,7 +444,7 @@ export default class PictogramaRepository {
              ${COLLECTION_SQL} AS coleccion
       FROM pictogramas
       WHERE ${where.join(' AND ')}
-      ORDER BY ${orderBy}
+      ORDER BY ${boostOrderBy}${orderBy}
       LIMIT $${limitIndex} OFFSET $${offsetIndex}
     `;
 
