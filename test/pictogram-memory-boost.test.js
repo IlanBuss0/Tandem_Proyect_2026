@@ -44,6 +44,19 @@ test('boostPictogramIds: un id que no matchea el filtro no aparece de la nada', 
   assert.ok(Array.isArray(result.items));
 });
 
+test('boostPictogramIds junto con texto de busqueda no revienta el COUNT (bug real: parametro sin tipo)', async () => {
+  // Bug real: el param del boost se colaba en el slice de params del COUNT
+  // cuando habia searchText (whereParamCount se reasigna despues del LIKE),
+  // y Postgres tiraba "could not determine data type of parameter" porque
+  // el COUNT nunca lo referencia en su texto.
+  const result = await repository.searchAsync({
+    search: 'a', category: '', language: 'es', limit: 5, offset: 0,
+    boostPictogramIds: ['id-que-no-existe'],
+  });
+  assert.ok(Array.isArray(result.items));
+  assert.equal(typeof result.total, 'number');
+});
+
 test('boostPictogramIds vacio o ausente no cambia el orden de siempre', async () => {
   const sinParametro = await repository.searchAsync({ category: 'todas', language: 'es', limit: 10, offset: 0 });
   const vacio = await repository.searchAsync({ category: 'todas', language: 'es', limit: 10, offset: 0, boostPictogramIds: [] });

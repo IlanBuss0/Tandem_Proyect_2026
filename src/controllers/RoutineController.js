@@ -3,12 +3,14 @@ import { StatusCodes } from 'http-status-codes';
 
 import RoutineService from '../services/RoutineService.js';
 import AuthorizationService from '../services/AuthorizationService.js';
+import MemoryProfileService from '../services/MemoryProfileService.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { csrfMiddleware } from '../middlewares/csrf.middleware.js';
 import { PERTENECIENTE_PERMISSIONS } from '../modules/security/permissions.constants.js';
 
 const router = Router();
 const routineService = new RoutineService();
+const memoryProfileService = new MemoryProfileService();
 
 // "Mi dia" es exclusivo de pertenecientes (a diferencia del calendario, que
 // tutores/profesionales tambien usan para su agenda personal) — no hace
@@ -41,6 +43,10 @@ router.put('/usuario/:idUsuario', authMiddleware, csrfMiddleware, async (req, re
     const idUsuario = parseInt(req.params.idUsuario, 10);
     await assertCanWriteRoutines(req, idUsuario);
     const routines = await routineService.replaceAllForUsuarioAsync(idUsuario, req.body.routines || []);
+    // Este guardado bulk es el que de verdad usa TutorRoutinePictogramReview
+    // al corregir un pictograma (via saveRoutinesForUser) — invalida el
+    // perfil de memoria de esta persona por la misma razon que /vocabulary.
+    await memoryProfileService.invalidateAsync(idUsuario);
     res.status(StatusCodes.OK).json(routines);
   } catch (error) {
     res.status(error.statusCode ?? StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);
@@ -54,6 +60,7 @@ router.patch('/item/:itemId', authMiddleware, csrfMiddleware, async (req, res) =
     const idUsuario = parseInt(req.body.idUsuario, 10);
     await assertCanWriteRoutines(req, idUsuario);
     await routineService.updateItemAsync(req.params.itemId, idUsuario, req.body);
+    await memoryProfileService.invalidateAsync(idUsuario);
     res.status(StatusCodes.OK).json({ updated: true });
   } catch (error) {
     res.status(error.statusCode ?? StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);

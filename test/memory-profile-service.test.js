@@ -19,6 +19,11 @@ function buildService() {
   return service;
 }
 
+test('invalidateAsync: no tira aunque no haya Redis en este entorno (no-op seguro)', async () => {
+  const service = buildService();
+  await assert.doesNotReject(() => service.invalidateAsync(17));
+});
+
 test('computeProfileAsync: sin ningun dato, devuelve un perfil vacio pero valido (nunca rompe)', async () => {
   const service = buildService();
   const profile = await service.computeProfileAsync(17);

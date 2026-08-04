@@ -5,6 +5,7 @@ import AiPictogramRepository from '../repositories/AiPictogramRepository.js';
 import PictogramaRepository from '../repositories/PictogramaRepository.js';
 import FileStorageService from './FileStorageService.js';
 import AuthorizationService from './AuthorizationService.js';
+import StylePreferenceStore from '../modules/pictograms/style-preference.js';
 import AppError from '../modules/errors/AppError.js';
 
 const QUICK_MODEL = 'fal-ai/flux/schnell';
@@ -72,7 +73,21 @@ function isRetryablePollinationsError(error) {
     || /queue\s*full|timeout|timed?\s*out|network|socket|econn/i.test(providerError.message || '');
 }
 
-function buildPrompt(name, description, revisionInstructions = '') {
+// Sesion 25 (perfil de memoria), arreglo de consistencia: el motor de
+// pictogramizacion automatico ya prioriza el estilo que cada persona
+// eligio mas seguido (StylePreferenceStore) — este generador con IA
+// (usado por un tutor, con foto de referencia) generaba sin saber nada
+// de eso. Solo se traducen los estilos que tienen sentido como pedido de
+// generacion; emoji/icono/propio no son un "estilo de dibujo" que un
+// modelo de imagenes pueda perseguir.
+const STYLE_PROMPT_HINTS = {
+  realista: 'Prefer a realistic, photo-like illustration style.',
+  ilustracion: 'Prefer a soft, friendly flat-illustration style.',
+  dibujo: 'Prefer a playful cartoon style.',
+  'alto-contraste': 'Use bold outlines and strong, high-contrast color blocks.',
+};
+
+export function buildPrompt(name, description, revisionInstructions = '', preferredStyle = null) {
   const visualDescription = visualOnlyText(description);
   const visualRevision = visualOnlyText(revisionInstructions);
   const parts = [
@@ -83,6 +98,10 @@ function buildPrompt(name, description, revisionInstructions = '') {
     'If the user asks for words, labels, speech bubbles, or written phrases, represent that message visually without drawing text.',
     'The result must be immediately understandable for a person who uses augmentative and alternative communication.',
   ];
+
+  if (preferredStyle && STYLE_PROMPT_HINTS[preferredStyle]) {
+    parts.push(STYLE_PROMPT_HINTS[preferredStyle]);
+  }
 
   if (visualRevision) {
     parts.push(`Edit the provided pictogram preview using the visual references. Revision request: ${visualRevision}. Preserve the AAC pictogram style and only change what the request implies.`);
@@ -124,6 +143,7 @@ export default class AiPictogramService {
     this.repository = new AiPictogramRepository();
     this.pictograms = new PictogramaRepository();
     this.storage = new FileStorageService();
+    this.StylePreferenceStore = new StylePreferenceStore();
   }
 
   ensureSchemaAsync = async () => {
@@ -322,7 +342,9 @@ export default class AiPictogramService {
     if (BLOCKED_TEXT.test(`${name} ${description}`)) throw new AppError('La solicitud no supera el control de contenido.', 422);
     if (!ALLOWED_CATEGORIES.has(category)) throw new AppError('La categoria no es valida.', 400);
     if (!Number.isInteger(targetPertenecienteId) || targetPertenecienteId <= 0) throw new AppError('Selecciona un perteneciente.', 400);
-    await this.assertTargetAsync(userId, targetPertenecienteId);
+    const targets = await this.getTargetsAsync(userId);
+    const target = targets.find((item) => Number(item.id) === targetPertenecienteId);
+    if (!target) throw new AppError('No tenes un vinculo activo con el perteneciente seleccionado.', 403);
 
     const hasFalKey = process.env.FAL_KEY && process.env.FAL_KEY !== 'replace-with-fal-api-key';
     const id = crypto.randomUUID();
@@ -335,7 +357,11 @@ export default class AiPictogramService {
       throw new AppError('Las referencias se aplican en modo final. Usa modo final o quita la referencia.', 400);
     }
     const model = hasFalKey ? (mode === 'quick' ? QUICK_MODEL : reference ? FINAL_EDIT_MODEL : FINAL_MODEL) : 'pollinations-flux';
-    const prompt = buildPrompt(name, description);
+    // Sesion 25: mismo estilo que el motor automatico ya prioriza para
+    // esta persona (el que mas eligio, no el override de accesibilidad de
+    // alto contraste — esto es una preferencia, no una necesidad).
+    const preferredStyle = target.usuarioId ? await this.StylePreferenceStore.getPreferredStyleAsync(target.usuarioId) : null;
+    const prompt = buildPrompt(name, description, '', preferredStyle);
     const generation = await this.repository.createGenerationAsync({
       id, creatorUserId: userId, targetPertenecienteId, name, description, category,
       mode, model, prompt, referenceType: reference?.type,
@@ -411,7 +437,10 @@ export default class AiPictogramService {
 
     const hasFalKey = process.env.FAL_KEY && process.env.FAL_KEY !== 'replace-with-fal-api-key';
     const model = hasFalKey ? FINAL_EDIT_MODEL : 'pollinations-flux';
-    const prompt = buildPrompt(name, description, revisionInstructions);
+    const targets = await this.getTargetsAsync(userId);
+    const target = targets.find((item) => Number(item.id) === Number(generation.targetPertenecienteId));
+    const preferredStyle = target?.usuarioId ? await this.StylePreferenceStore.getPreferredStyleAsync(target.usuarioId) : null;
+    const prompt = buildPrompt(name, description, revisionInstructions, preferredStyle);
     const { imageBuffer, providerRequestId, seed } = await this.createImageBufferAsync({
       model,
       prompt,

@@ -18,9 +18,14 @@ const CACHE_TTL_SECONDS = 3600;
 // juntar datos de varias fuentes que ya existen (eventos_uso,
 // eventos_calendario, vocabulario personal, preferencia de estilo),
 // correrlos por los modulos puros de calculo (Sesion 19-21 + memory-profile.js
-// nuevo) y cachear el resultado. No hay invalidacion activa al escribir:
-// es algo que se consulta de forma pasiva, el TTL de 1h alcanza (mismo
-// criterio que ya usa el cache del catalogo de pictogramas).
+// nuevo) y cachear el resultado.
+//
+// invalidateAsync SI se llama activamente (a diferencia de lo que este
+// comentario decia antes) en los caminos de escritura que mas importan:
+// cuando un tutor corrige un pictograma a mano, es exactamente la señal
+// mas fuerte de memoria que existe — hacerlo esperar hasta 1h de TTL para
+// ver el efecto (en el catalogo, en el motor de pictogramizacion) rompe
+// la sensacion de "esto funciona" del circuito de correccion.
 export default class MemoryProfileService {
   constructor() {
     this.MemoryProfileRepository = new MemoryProfileRepository();
@@ -53,6 +58,14 @@ export default class MemoryProfileService {
       },
       CACHE_TTL_SECONDS,
     );
+  };
+
+  // Se llama despues de cualquier escritura que cambie lo que el perfil
+  // calcula (correccion de pictograma, vocabulario personal, preferencia
+  // de estilo). Sin Redis (dev), es un no-op — no hay nada que invalidar
+  // porque getOrSet nunca cacheo nada en primer lugar.
+  invalidateAsync = async (idUsuario) => {
+    await cacheService.delByPattern(`memory-profile.usuario.${idUsuario}*`);
   };
 
   getProfileAsync = async (idUsuario) => {

@@ -352,25 +352,6 @@ export default class PictogramaRepository {
     // statement requires M").
     let whereParamCount = params.length;
 
-    // Perfil de memoria (Sesion 25): si vienen pictogramas que esta persona
-    // ya usa de verdad, se anteponen al ORDER BY que ya exista (no lo
-    // reemplazan) — asi el filtro por categoria/estilo sigue funcionando
-    // igual, solo cambia el orden DENTRO de lo que ya matcheaba. Sin
-    // ninguna marca visual nueva: el pictograma simplemente aparece primero.
-    //
-    // El "id" que conoce el resto de la app (el que se guarda en
-    // rutina_items.id_pictograma, el que arma el perfil de memoria) NO es
-    // la columna bigint `id` — es COALESCE(origen_id, arasaac_id, id),
-    // exactamente la misma prioridad que normalizeRow() usa para el JSON
-    // de respuesta. Comparar contra la columna `id` cruda comparaba
-    // bigint contra texto (error de tipo, lo agarraron los tests).
-    let boostOrderBy = '';
-    const boostIds = Array.isArray(boostPictogramIds) ? boostPictogramIds.filter(Boolean) : [];
-    if (boostIds.length > 0) {
-      params.push(boostIds);
-      boostOrderBy = `CASE WHEN COALESCE(origen_id, arasaac_id::text, id::text) = ANY($${params.length}::text[]) THEN 0 ELSE 1 END,\n        `;
-    }
-
     if (searchText) {
       // Todas las comparaciones van sin acentos ni ñ, de los dos lados: asi
       // "baño" encuentra "bano" y "miercoles" encuentra "miércoles". Ver el
@@ -430,6 +411,31 @@ export default class PictogramaRepository {
     const countSql = `SELECT COUNT(*)::int AS total FROM pictogramas WHERE ${where.join(' AND ')}`;
     const countRow = await BD.queryOne(countSql, params.slice(0, whereParamCount));
     const total = countRow?.total ?? 0;
+
+    // Perfil de memoria (Sesion 25): si vienen pictogramas que esta persona
+    // ya usa de verdad, se anteponen al ORDER BY que ya exista (no lo
+    // reemplazan) — asi el filtro por categoria/estilo sigue funcionando
+    // igual, solo cambia el orden DENTRO de lo que ya matcheaba. Sin
+    // ninguna marca visual nueva: el pictograma simplemente aparece primero.
+    //
+    // El "id" que conoce el resto de la app (el que se guarda en
+    // rutina_items.id_pictograma, el que arma el perfil de memoria) NO es
+    // la columna bigint `id` — es COALESCE(origen_id, arasaac_id, id),
+    // exactamente la misma prioridad que normalizeRow() usa para el JSON
+    // de respuesta.
+    //
+    // El param del boost se agrega ACA, despues del COUNT, a proposito: si
+    // se agrega antes, se cuela en params.slice(0, whereParamCount) cuando
+    // hay searchText (whereParamCount se reasigna DESPUES del LIKE, ver
+    // arriba) y Postgres tira "could not determine data type of parameter"
+    // porque el COUNT nunca lo referencia en su texto — bug real, lo
+    // agarro un test en vivo antes de llegar a produccion.
+    let boostOrderBy = '';
+    const boostIds = Array.isArray(boostPictogramIds) ? boostPictogramIds.filter(Boolean) : [];
+    if (boostIds.length > 0) {
+      params.push(boostIds);
+      boostOrderBy = `CASE WHEN COALESCE(origen_id, arasaac_id::text, id::text) = ANY($${params.length}::text[]) THEN 0 ELSE 1 END,\n        `;
+    }
 
     params.push(limit);
     const limitIndex = params.length;

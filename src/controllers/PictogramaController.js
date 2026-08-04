@@ -33,7 +33,7 @@ const usageEventService = new UsageEventService();
 
 const authIfTargetPerteneciente = (req, res, next) => {
   const targetPertenecienteId = req.query.targetPertenecienteId || req.query.id_perteneciente_destino;
-  if (targetPertenecienteId) return authMiddleware(req, res, next);
+  if (targetPertenecienteId || req.query.boostForUsuarioId) return authMiddleware(req, res, next);
   return next();
 };
 
@@ -170,6 +170,13 @@ router.post('/vocabulary', authMiddleware, csrfMiddleware, async (req, res, next
     if (pictogram?.visualStyle) {
       await stylePreferenceStore.registerChoiceAsync(ownerUsuarioId, pictogram.visualStyle);
     }
+
+    // Corregir un pictograma es la señal de memoria mas fuerte que existe
+    // (alguien la eligio a mano, a proposito). Sin esto, el catalogo y el
+    // motor de pictogramizacion podian tardar hasta 1h (TTL del cache) en
+    // reflejar la correccion — el tutor corrige, prueba, y parece que no
+    // paso nada.
+    await memoryProfileService.invalidateAsync(ownerUsuarioId);
 
     await usageEventService.logAsync({
       idUsuario: ownerUsuarioId,
@@ -310,6 +317,22 @@ router.get('', authIfTargetPerteneciente, async (req, res, next) => {
         }
       } catch {
         boostPictogramIds = [];
+      }
+    } else if (req.query.boostForUsuarioId) {
+      // Camino alternativo para pantallas que ya conocen el usuario destino
+      // directo (no el id de perteneciente) — ej. el picker de correccion
+      // de pasos (RoutinePictogramPicker.tsx), que recibe targetUsuarioId
+      // de mas arriba en el arbol de componentes. Mismo chequeo de lectura
+      // que el resto del perfil de memoria: quien pide tiene que poder leer
+      // los datos de ese usuario.
+      const boostUsuarioId = Number(req.query.boostForUsuarioId);
+      if (Number.isInteger(boostUsuarioId) && boostUsuarioId > 0) {
+        try {
+          await AuthorizationService.assertCanReadUsuarioConfig(req.user.id, boostUsuarioId);
+          boostPictogramIds = await memoryProfileService.getFrequentPictogramIdsAsync(boostUsuarioId);
+        } catch {
+          boostPictogramIds = [];
+        }
       }
     }
 
