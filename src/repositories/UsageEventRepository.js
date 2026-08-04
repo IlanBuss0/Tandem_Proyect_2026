@@ -43,6 +43,21 @@ export default class UsageEventRepository {
     return row?.id ?? null;
   };
 
+  createIdempotentAsync = async (event, executionId) => await BD.transaction(async (client) => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${event.idUsuario}:${event.tipoEvento}:${executionId}`]);
+    const existing = await client.query(
+      `SELECT id FROM eventos_uso WHERE id_usuario = $1 AND tipo_evento = $2 AND valor->>'executionId' = $3 LIMIT 1`,
+      [event.idUsuario, event.tipoEvento, executionId],
+    );
+    if (existing.rows[0]) return existing.rows[0].id;
+    const inserted = await client.query(
+      `INSERT INTO eventos_uso (id_usuario, tipo_evento, entidad_tipo, entidad_id, id_pictograma, valor, origen, ocurrido_en)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW())) RETURNING id`,
+      [event.idUsuario, event.tipoEvento, event.entidadTipo || null, event.entidadId || null, event.idPictograma || null, event.valor ? JSON.stringify(event.valor) : null, event.origen || null, event.ocurrioEn || null],
+    );
+    return inserted.rows[0]?.id ?? null;
+  });
+
   getForUsuarioAsync = async (idUsuario, { tipoEvento, limit = 50 } = {}) => {
     const where = ['id_usuario = $1'];
     const params = [idUsuario];

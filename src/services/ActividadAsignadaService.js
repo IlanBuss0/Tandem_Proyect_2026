@@ -2,6 +2,8 @@ import ActividadAsignadaRepository from '../repositories/ActividadAsignadaReposi
 import { cacheService } from './CacheService.js';
 import PertenecienteRepository from '../repositories/PertenecienteRepository.js';
 import NotificationProducerService from './NotificationProducerService.js';
+import ActividadPersonalizadaRepository from '../repositories/ActividadPersonalizadaRepository.js';
+import AppError from '../modules/errors/AppError.js';
 
 export default class ActividadAsignadaService {
   constructor() {
@@ -9,6 +11,7 @@ export default class ActividadAsignadaService {
     this.ActividadAsignadaRepository = new ActividadAsignadaRepository();
     this.PertenecienteRepository = new PertenecienteRepository();
     this.NotificationProducerService = new NotificationProducerService();
+    this.ActividadPersonalizadaRepository = new ActividadPersonalizadaRepository();
   }
 
   getAllAsync = async () => {
@@ -47,6 +50,24 @@ export default class ActividadAsignadaService {
   createAsync = async (entity) => {
     console.log(`ActividadAsignadaService.createAsync(${JSON.stringify(entity)})`);
     this.validarActividadAsignadaParaCrear(entity);
+    if (entity.id_actividad_personalizada) {
+      const [activity, perteneciente] = await Promise.all([
+        this.ActividadPersonalizadaRepository.getByIdAsync(entity.id_actividad_personalizada),
+        this.PertenecienteRepository.getByIdAsync(entity.id_perteneciente),
+      ]);
+      const gameLine = String(activity?.descripcion || '').split('\n').find((line) => line.trim().startsWith('Juego:'));
+      if (gameLine) {
+        try {
+          const metadata = JSON.parse(gameLine.replace(/^Juego:\s*/i, ''));
+          const sourceUserId = metadata?.gameData?.routineSequence?.sourceRoutine?.sourceUserId;
+          if (sourceUserId && Number(sourceUserId) !== Number(perteneciente?.id_usuario)) {
+            throw new AppError('La instantanea de rutina solo puede asignarse al perteneciente de origen.', 403);
+          }
+        } catch (error) {
+          if (error instanceof AppError) throw error;
+        }
+      }
+    }
     const newId = await this.ActividadAsignadaRepository.createAsync(entity);
     await cacheService.delByPattern(`actividad-asignada.perteneciente.${entity.id_perteneciente}`);
     const perteneciente = await this.PertenecienteRepository.getByIdAsync(entity.id_perteneciente);

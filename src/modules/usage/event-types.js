@@ -20,6 +20,7 @@ export const USAGE_EVENT_TYPES = Object.freeze({
   // (Sesion 8). El primer paso de "co-decidir" es que el pedido exista y
   // se vea, no un motor de aprobaciones completo.
   PEDIDO_DIA: 'pedido_dia',
+  RUTINA_SECUENCIA_COMPLETADA: 'rutina_secuencia_completada',
 });
 
 const VALID_TYPES = new Set(Object.values(USAGE_EVENT_TYPES));
@@ -37,6 +38,16 @@ export function validateUsageEvent(event) {
   if (!isValidTipoEvento(event.tipoEvento)) return `tipoEvento invalido: ${event.tipoEvento}`;
   if (event.valor !== undefined && event.valor !== null && typeof event.valor !== 'object') {
     return 'valor debe ser un objeto si se manda.';
+  }
+  if (event.tipoEvento === USAGE_EVENT_TYPES.RUTINA_SECUENCIA_COMPLETADA) {
+    const value = event.valor || {};
+    if (!value.executionId || typeof value.executionId !== 'string' || value.executionId.length > 100) return 'executionId es obligatorio.';
+    if (!['order', 'next', 'missing', 'detective', 'plan-b'].includes(value.mode)) return 'mode invalido.';
+    if (!Number.isFinite(value.score) || value.score < 40 || value.score > 100) return 'score invalido.';
+    if (!Number.isInteger(value.attempts) || value.attempts < 1) return 'attempts invalido.';
+    if (!Number.isInteger(value.hintsUsed) || value.hintsUsed < 0 || value.hintsUsed > 4) return 'hintsUsed invalido.';
+    if (!Number.isFinite(value.durationMs) || value.durationMs < 0) return 'durationMs invalido.';
+    if (!Array.isArray(value.conflictStepIds) || value.conflictStepIds.some((id) => typeof id !== 'string' || id.length > 100)) return 'conflictStepIds invalido.';
   }
   return null;
 }

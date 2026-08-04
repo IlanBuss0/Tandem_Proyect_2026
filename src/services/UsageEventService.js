@@ -24,6 +24,7 @@ export default class UsageEventService {
       if (!event.idUsuario) throw new Error('idUsuario es obligatorio.');
 
       await this.ensureSchemaAsync();
+      if (event.valor?.executionId) return await this.UsageEventRepository.createIdempotentAsync(event, event.valor.executionId);
       return await this.UsageEventRepository.createAsync(event);
     } catch (error) {
       console.error('[UsageEvent] no se pudo registrar', { event, error: error.message });

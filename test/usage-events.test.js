@@ -101,3 +101,26 @@ test('getForUsuarioAsync: delega en el repositorio con las opciones dadas', asyn
   assert.equal(rows.length, 1);
   assert.equal(receivedOptions.limit, 10);
 });
+
+test('rutina_secuencia_completada valida el payload privado y versionado', () => {
+  const error = validateUsageEvent({ tipoEvento: USAGE_EVENT_TYPES.RUTINA_SECUENCIA_COMPLETADA, valor: {
+    executionId: 'exec-1', mode: 'order', score: 85, attempts: 2, hintsUsed: 1, durationMs: 1200, conflictStepIds: ['step-2'],
+  } });
+  assert.equal(error, null);
+});
+
+test('rutina_secuencia_completada exige executionId para deduplicar', () => {
+  const error = validateUsageEvent({ tipoEvento: USAGE_EVENT_TYPES.RUTINA_SECUENCIA_COMPLETADA, valor: {
+    mode: 'order', score: 100, attempts: 1, hintsUsed: 0, durationMs: 20, conflictStepIds: [],
+  } });
+  assert.match(error, /executionId/);
+});
+
+test('logAsync usa persistencia idempotente cuando existe executionId', async () => {
+  const service = buildService();
+  let received = null;
+  service.UsageEventRepository.createIdempotentAsync = async (event, key) => { received = { event, key }; return 9; };
+  const event = { idUsuario: 7, tipoEvento: USAGE_EVENT_TYPES.RUTINA_SECUENCIA_COMPLETADA, valor: { executionId: 'exec-9', mode: 'next', score: 100, attempts: 1, hintsUsed: 0, durationMs: 30, conflictStepIds: [] } };
+  assert.equal(await service.logAsync(event), 9);
+  assert.equal(received.key, 'exec-9');
+});
