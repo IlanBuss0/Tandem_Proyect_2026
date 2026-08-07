@@ -3,6 +3,9 @@ import rateLimit from 'express-rate-limit';
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
+  // Los accesos válidos no son intentos de fuerza bruta. Contarlos hacía que
+  // una misma IP quedara bloqueada después de alternar entre varias cuentas.
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiados intentos. Probá nuevamente en unos minutos.' },

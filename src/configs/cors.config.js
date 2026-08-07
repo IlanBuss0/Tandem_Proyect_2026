@@ -11,11 +11,12 @@ const developmentOrigins = [
 
 const configuredOrigins = envConfig.corsOrigins;
 const allowAllOrigins = envConfig.nodeEnv !== 'production' && configuredOrigins.includes('*');
-const allowedOrigins = configuredOrigins.length > 0
+// En desarrollo, conservar siempre los aliases locales aunque CORS_ORIGINS
+// tenga valores explícitos. Vite puede anunciar localhost o 127.0.0.1 según
+// cómo se inicie, y ambos representan el mismo frontend local.
+const allowedOrigins = envConfig.nodeEnv === 'production'
   ? configuredOrigins
-  : envConfig.nodeEnv === 'production'
-    ? []
-    : developmentOrigins;
+  : [...new Set([...developmentOrigins, ...configuredOrigins])];
 
 export function isCorsOriginAllowed(origin) {
   if (!origin) return true;
