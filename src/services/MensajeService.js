@@ -32,10 +32,10 @@ export default class MensajeService {
     return await this.MensajeRepository.getByChatForParticipantAsync(idChat, idUsuario, limit, beforeId, afterId);
   };
 
-  createAsync = async (entity) => { console.log(`MensajeService.createAsync(${JSON.stringify(entity)})`); this.validarMensajeParaCrear(entity); return await this.MensajeRepository.createAsync(entity); };
+  createAsync = async (entity) => { console.log(`MensajeService.createAsync(chat=${entity?.id_chat})`); this.validarMensajeParaCrear(entity); return await this.MensajeRepository.createAsync(entity); };
 
   createFromUserAsync = async (entity, idArchivos = []) => {
-    console.log(`MensajeService.createFromUserAsync(${JSON.stringify(entity)})`);
+    console.log(`MensajeService.createFromUserAsync(chat=${entity?.id_chat}, emisor=${entity?.id_usuario_emisor})`);
     await this.ParticipanteChatService.ensureActiveParticipantAsync(entity?.id_chat, entity?.id_usuario_emisor);
     await AuthorizationService.assertCanSendMessageToChat(entity?.id_usuario_emisor, entity?.id_chat);
     this.validarMensajeParaCrear(entity);

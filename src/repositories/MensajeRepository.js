@@ -1,4 +1,5 @@
 import BD from '../db/BD.js';
+import { decryptFieldInRow, decryptFieldInRows, encryptField } from '../modules/security/field-encryption.helper.js';
 
 export default class MensajeRepository {
   constructor() {
@@ -32,7 +33,7 @@ export default class MensajeRepository {
     console.log('MensajeRepository.getAllAsync()');
     await this.ensureMessageMetadataColumnsAsync();
     const sql = `SELECT id, id_chat, id_usuario_emisor, id_tipo_mensaje, contenido, fecha_envio, fecha_edicion, fecha_eliminacion, eliminado FROM mensajes ORDER BY id DESC`;
-    return await BD.query(sql);
+    return decryptFieldInRows(await BD.query(sql), 'contenido');
   };
 
   getByIdAsync = async (id) => {
@@ -53,7 +54,7 @@ export default class MensajeRepository {
       WHERE m.id = $1
       GROUP BY m.id, m.id_chat, m.id_usuario_emisor, m.id_tipo_mensaje, m.contenido, m.fecha_envio, m.fecha_edicion, m.fecha_eliminacion, m.eliminado
     `;
-    return await BD.queryOne(sql, [id]);
+    return decryptFieldInRow(await BD.queryOne(sql, [id]), 'contenido');
   };
 
   getByChatIdAsync = async (idChat, limit = 30, beforeId = null, afterId = null) => {
@@ -70,7 +71,7 @@ export default class MensajeRepository {
       ORDER BY id ${orderDirection}
       LIMIT $2
     `;
-    return await BD.query(sql, [idChat, limit, beforeId, afterId]);
+    return decryptFieldInRows(await BD.query(sql, [idChat, limit, beforeId, afterId]), 'contenido');
   };
 
   getByChatForParticipantAsync = async (idChat, idUsuario, limit = 30, beforeId = null, afterId = null) => {
@@ -99,7 +100,7 @@ export default class MensajeRepository {
       ORDER BY m.id ${orderDirection}
       LIMIT $3
     `;
-    return await BD.query(sql, [idChat, idUsuario, limit, beforeId, afterId]);
+    return decryptFieldInRows(await BD.query(sql, [idChat, idUsuario, limit, beforeId, afterId]), 'contenido');
   };
 
   getByChatIdAsync = async (idChat, limit = 30, beforeId = null, afterId = null) => {
@@ -126,14 +127,14 @@ export default class MensajeRepository {
       ORDER BY m.id ${orderDirection}
       LIMIT $2
     `;
-    return await BD.query(sql, [idChat, limit, beforeId, afterId]);
+    return decryptFieldInRows(await BD.query(sql, [idChat, limit, beforeId, afterId]), 'contenido');
   };
 
   createAsync = async (entity) => {
-    console.log(`MensajeRepository.createAsync(${JSON.stringify(entity)})`);
+    console.log(`MensajeRepository.createAsync(chat=${entity?.id_chat})`);
     await this.ensureMessageMetadataColumnsAsync();
     const sql = `INSERT INTO mensajes (id_chat, id_usuario_emisor, id_tipo_mensaje, contenido, fecha_envio, eliminado) VALUES ($1, $2, $3, $4, $5, COALESCE($6, false)) RETURNING id`;
-    const values = [entity?.id_chat, entity?.id_usuario_emisor, entity?.id_tipo_mensaje, entity?.contenido ?? null, entity?.fecha_envio, entity?.eliminado ?? false];
+    const values = [entity?.id_chat, entity?.id_usuario_emisor, entity?.id_tipo_mensaje, encryptField(entity?.contenido ?? null), entity?.fecha_envio, entity?.eliminado ?? false];
     const result = await BD.queryOne(sql, values);
     return result?.id ?? 0;
   };
@@ -145,7 +146,7 @@ export default class MensajeRepository {
     const previousEntity = await this.getByIdAsync(id);
     if (previousEntity == null) return 0;
     const sql = `UPDATE mensajes SET id_chat = $2, id_usuario_emisor = $3, id_tipo_mensaje = $4, contenido = $5, fecha_envio = $6, eliminado = $7, fecha_edicion = $8, fecha_eliminacion = $9 WHERE id = $1`;
-    const values = [id, entity?.id_chat ?? previousEntity.id_chat, entity?.id_usuario_emisor ?? previousEntity.id_usuario_emisor, entity?.id_tipo_mensaje ?? previousEntity.id_tipo_mensaje, entity?.contenido ?? previousEntity.contenido, entity?.fecha_envio ?? previousEntity.fecha_envio, entity?.eliminado ?? previousEntity.eliminado, entity?.fecha_edicion === undefined ? previousEntity.fecha_edicion : entity.fecha_edicion, entity?.fecha_eliminacion === undefined ? previousEntity.fecha_eliminacion : entity.fecha_eliminacion];
+    const values = [id, entity?.id_chat ?? previousEntity.id_chat, entity?.id_usuario_emisor ?? previousEntity.id_usuario_emisor, entity?.id_tipo_mensaje ?? previousEntity.id_tipo_mensaje, encryptField(entity?.contenido ?? previousEntity.contenido), entity?.fecha_envio ?? previousEntity.fecha_envio, entity?.eliminado ?? previousEntity.eliminado, entity?.fecha_edicion === undefined ? previousEntity.fecha_edicion : entity.fecha_edicion, entity?.fecha_eliminacion === undefined ? previousEntity.fecha_eliminacion : entity.fecha_eliminacion];
     return await BD.execute(sql, values);
   };
 

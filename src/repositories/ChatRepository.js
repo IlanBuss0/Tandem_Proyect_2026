@@ -1,4 +1,5 @@
 import BD from '../db/BD.js';
+import { decryptFieldInRows } from '../modules/security/field-encryption.helper.js';
 
 export default class ChatRepository {
   constructor() {
@@ -133,7 +134,8 @@ export default class ChatRepository {
       GROUP BY c.id, c.id_tipo_chat, c.nombre, c.descripcion, c.avatar_url, c.avatar_path, c.avatar_content_type, c.avatar_actualizada_en, c.actualizado_en, c.fecha_creacion, c.activo, pc.ultimo_mensaje_leido_id, pc.fecha_ultima_lectura, m.contenido, m.fecha_envio, m.id_usuario_emisor
       ORDER BY m.fecha_envio DESC NULLS LAST, c.fecha_creacion DESC
     `;
-    return await BD.query(sql, [idUsuario, since]);
+    const rows = await BD.query(sql, [idUsuario, since]);
+    return decryptFieldInRows(rows, 'ultimo_mensaje_contenido');
   };
 
   getActiveBetweenUsersAsync = async (idUsuarioA, idUsuarioB, idTipoChat = null) => {

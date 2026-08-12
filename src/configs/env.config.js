@@ -23,6 +23,7 @@ export const envConfig = {
   databaseUrl: process.env.DATABASE_URL,
   databasePoolMax: Number.parseInt(process.env.DATABASE_POOL_MAX || '5', 10),
   jwtSecret: process.env.JWT_SECRET,
+  dataEncryptionKey: process.env.DATA_ENCRYPTION_KEY || null,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15m',
   refreshTokenExpiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '7d',
   corsOrigins: parseCsv(process.env.CORS_ORIGINS),
@@ -58,10 +59,18 @@ export function validateEnvConfig() {
 
   if (!envConfig.jwtSecret) missing.push('JWT_SECRET');
   if (!envConfig.databaseUrl) missing.push('DATABASE_URL');
+  if (envConfig.nodeEnv === 'production' && !envConfig.dataEncryptionKey) missing.push('DATA_ENCRYPTION_KEY');
   if (envConfig.nodeEnv === 'production' && !envConfig.corsOrigins.length) missing.push('CORS_ORIGINS');
   if (!isExpiresIn(envConfig.jwtExpiresIn)) invalid.push('JWT_EXPIRES_IN');
   if (!isExpiresIn(envConfig.refreshTokenExpiresIn)) invalid.push('REFRESH_TOKEN_EXPIRES_IN');
   if (envConfig.nodeEnv === 'production' && envConfig.corsOrigins.includes('*')) invalid.push('CORS_ORIGINS');
+  if (envConfig.dataEncryptionKey) {
+    try {
+      if (Buffer.from(envConfig.dataEncryptionKey, 'base64').length !== 32) invalid.push('DATA_ENCRYPTION_KEY');
+    } catch {
+      invalid.push('DATA_ENCRYPTION_KEY');
+    }
+  }
 
   if (missing.length) {
     throw new Error(`Variables de entorno obligatorias faltantes: ${missing.join(', ')}`);

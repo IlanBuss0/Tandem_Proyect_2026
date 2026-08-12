@@ -1,4 +1,5 @@
 import BD from '../db/BD.js';
+import { decryptFieldInRow, decryptFieldInRows, encryptField } from '../modules/security/field-encryption.helper.js';
 
 const REPORTE_COLUMNS = `id, id_profesional, id_perteneciente, titulo, contenido, id_tipo,
   fecha_generacion, enviado_al_tutor, fecha_envio`;
@@ -15,24 +16,24 @@ export default class ReporteProfesionalRepository {
       VALUES ($1, $2, $3, $4, $5)
       RETURNING ${REPORTE_COLUMNS}
     `;
-    const values = [entity?.id_profesional, entity?.id_perteneciente, entity?.titulo, entity?.contenido, entity?.id_tipo ?? 'manual'];
-    return await BD.queryOne(sql, values);
+    const values = [entity?.id_profesional, entity?.id_perteneciente, entity?.titulo, encryptField(entity?.contenido), entity?.id_tipo ?? 'manual'];
+    return decryptFieldInRow(await BD.queryOne(sql, values), 'contenido');
   };
 
   getByIdAsync = async (id) => {
     console.log(`ReporteProfesionalRepository.getByIdAsync(${id})`);
     const sql = `SELECT ${REPORTE_COLUMNS} FROM reportes_profesionales WHERE id = $1`;
-    return await BD.queryOne(sql, [id]);
+    return decryptFieldInRow(await BD.queryOne(sql, [id]), 'contenido');
   };
 
   getByProfesionalIdAsync = async (idProfesional, idPerteneciente = null) => {
     console.log(`ReporteProfesionalRepository.getByProfesionalIdAsync(${idProfesional}, ${idPerteneciente})`);
     if (idPerteneciente) {
       const sql = `SELECT ${REPORTE_COLUMNS} FROM reportes_profesionales WHERE id_profesional = $1 AND id_perteneciente = $2 ORDER BY fecha_generacion DESC`;
-      return await BD.query(sql, [idProfesional, idPerteneciente]);
+      return decryptFieldInRows(await BD.query(sql, [idProfesional, idPerteneciente]), 'contenido');
     }
     const sql = `SELECT ${REPORTE_COLUMNS} FROM reportes_profesionales WHERE id_profesional = $1 ORDER BY fecha_generacion DESC`;
-    return await BD.query(sql, [idProfesional]);
+    return decryptFieldInRows(await BD.query(sql, [idProfesional]), 'contenido');
   };
 
   /** Reportes enviados a un tutor: recorre pertenecientes -> vinculos_tutor_pertenecientes -> tutores. */
@@ -53,12 +54,12 @@ export default class ReporteProfesionalRepository {
       WHERE t.id_usuario = $1 AND r.enviado_al_tutor = true
       ORDER BY r.fecha_generacion DESC
     `;
-    return await BD.query(sql, [idUsuarioTutor]);
+    return decryptFieldInRows(await BD.query(sql, [idUsuarioTutor]), 'contenido');
   };
 
   markSentAsync = async (id) => {
     console.log(`ReporteProfesionalRepository.markSentAsync(${id})`);
     const sql = `UPDATE reportes_profesionales SET enviado_al_tutor = true, fecha_envio = $2 WHERE id = $1 RETURNING ${REPORTE_COLUMNS}`;
-    return await BD.queryOne(sql, [id, new Date()]);
+    return decryptFieldInRow(await BD.queryOne(sql, [id, new Date()]), 'contenido');
   };
 }

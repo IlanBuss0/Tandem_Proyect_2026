@@ -1,5 +1,15 @@
 # TÁNDEM — Avanzamos juntos
 
+## Seguridad de credenciales y datos sensibles
+
+- Las contrasenas nuevas usan Argon2id. Los hashes `sha256$` se actualizan al iniciar sesion.
+- `npm run security:audit-passwords` informa cantidades por formato sin mostrar hashes.
+- `npm run security:migrate-plaintext-passwords -- --apply` convierte formatos directos legacy a Argon2id.
+- Mensajes y reportes se cifran con AES-256-GCM usando `DATA_ENCRYPTION_KEY` (32 bytes en base64).
+- `npm run security:encrypt-sensitive` cifra las filas historicas de forma idempotente.
+
+Orden de despliegue: configurar y respaldar `DATA_ENCRYPTION_KEY`, desplegar el backend compatible y recien despues ejecutar `security:encrypt-sensitive`. La clave debe guardarse en el gestor de secretos del entorno; no se debe commitear ni perder.
+
 <p align="center">
   Platform focused on promoting autonomy and everyday independence for people with Autism Spectrum Disorder (ASD / TEA).
 </p>
