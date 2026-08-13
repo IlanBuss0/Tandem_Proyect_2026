@@ -171,6 +171,64 @@ class AuthService {
     return { sent: true };
   }
 
+  async getTutorAccount(idUsuario) {
+    const account = await AuthRepository.findAccountById(idUsuario);
+    if (!account) throw new AppError('Usuario no encontrado.', 404);
+    if (!account.id_tutor) throw new AppError('Esta cuenta no pertenece a un tutor.', 403);
+    return account;
+  }
+
+  async updateTutorAccount(idUsuario, data) {
+    const current = await this.getTutorAccount(idUsuario);
+    const nombre = String(data?.nombre || '').trim();
+    const apellido = String(data?.apellido || '').trim();
+    const correo = String(data?.correo || '').trim().toLowerCase();
+    const parentesco = String(data?.parentesco || '').trim() || null;
+    const telefono = String(data?.telefono || '').replace(/[^0-9]/g, '') || null;
+
+    if (!nombre || !apellido) throw new AppError('Nombre y apellido son obligatorios.', 400);
+    if (!EMAIL_REGEX.test(correo)) throw new AppError('El correo no tiene un formato valido.', 400);
+
+    const emailChanged = correo !== String(current.correo).toLowerCase();
+    if (emailChanged) {
+      const password = String(data?.contrasena_actual || '');
+      const credentials = await AuthRepository.findByCorreoOrNombreUsuario(current.nombre_usuario);
+      if (!password || !credentials || !(await compareValue(password, credentials.contrasena_hash))) {
+        throw new AppError('La contrasena actual es incorrecta.', 401);
+      }
+      const duplicate = await AuthRepository.findByCorreoOrNombreUsuario(correo);
+      if (duplicate && Number(duplicate.id) !== Number(idUsuario)) {
+        throw new AppError('El correo ya esta registrado.', 409);
+      }
+    }
+
+    const updated = await AuthRepository.updateTutorAccount(idUsuario, { nombre, apellido, correo, telefono, parentesco });
+    if (emailChanged) {
+      await this._issueAndSendVerificationEmail(updated);
+    }
+    return updated;
+  }
+
+  async changePassword(idUsuario, data) {
+    const currentPassword = String(data?.contrasena_actual || '');
+    const newPassword = String(data?.contrasena_nueva || '');
+    if (!PASSWORD_REGEX.test(newPassword)) {
+      throw new AppError('La nueva contrasena debe tener al menos 8 caracteres, con letras y numeros.', 400);
+    }
+
+    const user = await AuthRepository.findSafeById(idUsuario);
+    const credentials = user && await AuthRepository.findByCorreoOrNombreUsuario(user.nombre_usuario);
+    if (!credentials || !(await compareValue(currentPassword, credentials.contrasena_hash))) {
+      throw new AppError('La contrasena actual es incorrecta.', 401);
+    }
+    if (await compareValue(newPassword, credentials.contrasena_hash)) {
+      throw new AppError('La nueva contrasena debe ser diferente de la actual.', 400);
+    }
+
+    await AuthRepository.updatePasswordHash(idUsuario, await hashValue(newPassword));
+    return { changed: true };
+  }
+
   async loginWithGoogle(accessToken, rol, data = {}) {
     if (!envConfig.googleClientId) throw new AppError('El login con Google no esta configurado en el servidor.', 503);
     if (!accessToken) throw new AppError('accessToken es obligatorio.', 400);
