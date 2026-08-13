@@ -45,6 +45,38 @@ class AuthRepository {
   markEmailVerified(id) {
     return BD.execute('UPDATE usuarios SET email_verificado = true WHERE id = $1', [id]);
   }
+
+  findAccountById(id) {
+    return BD.queryOne(
+      `SELECT u.id, u.nombre_usuario, u.nombre, u.apellido, u.correo,
+              u.telefono, u.email_verificado, t.id AS id_tutor, t.parentesco
+       FROM usuarios u
+       LEFT JOIN tutores t ON t.id_usuario = u.id
+       WHERE u.id = $1`,
+      [id],
+    );
+  }
+
+  async updateTutorAccount(idUsuario, { nombre, apellido, correo, telefono, parentesco }) {
+    return BD.transaction(async (client) => {
+      await client.query(
+        `UPDATE usuarios
+         SET nombre = $2, apellido = $3, correo = $4, telefono = $5,
+             email_verificado = CASE WHEN LOWER(correo) = LOWER($4) THEN email_verificado ELSE false END
+         WHERE id = $1`,
+        [idUsuario, nombre, apellido, correo, telefono],
+      );
+      await client.query('UPDATE tutores SET parentesco = $2 WHERE id_usuario = $1', [idUsuario, parentesco]);
+      return queryOne(client,
+        `SELECT u.id, u.nombre_usuario, u.nombre, u.apellido, u.correo,
+                u.telefono, u.email_verificado, t.id AS id_tutor, t.parentesco
+         FROM usuarios u
+         LEFT JOIN tutores t ON t.id_usuario = u.id
+         WHERE u.id = $1`,
+        [idUsuario],
+      );
+    });
+  }
 }
 
 export default new AuthRepository();

@@ -141,4 +141,28 @@ router.post('/resend-verification', authMiddleware, csrfMiddleware, async (req, 
   }
 });
 
+router.get('/tutor-account', authMiddleware, async (req, res, next) => {
+  try {
+    res.status(200).json({ ok: true, data: await AuthService.getTutorAccount(req.user.id) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch('/tutor-account', authMiddleware, csrfMiddleware, async (req, res, next) => {
+  try {
+    res.status(200).json({ ok: true, data: await AuthService.updateTutorAccount(req.user.id, req.body) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch('/password', authMiddleware, csrfMiddleware, async (req, res, next) => {
+  try {
+    res.status(200).json({ ok: true, data: await AuthService.changePassword(req.user.id, req.body) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 export default router;
