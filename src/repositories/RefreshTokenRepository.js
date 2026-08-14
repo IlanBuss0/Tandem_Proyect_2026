@@ -63,6 +63,10 @@ class RefreshTokenRepository {
       [familyId],
     );
   }
+
+  revokeAllForUser(idUsuario, db = BD) {
+    return execute(db, 'UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP) WHERE id_usuario = $1', [idUsuario]);
+  }
 }
 
 export default new RefreshTokenRepository();

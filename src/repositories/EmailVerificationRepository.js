@@ -12,12 +12,14 @@ class EmailVerificationRepository {
     );
   }
 
-  findByTokenHash(tokenHash) {
-    return BD.queryOne('SELECT * FROM email_verification_tokens WHERE token_hash = $1 LIMIT 1', [tokenHash]);
+  async findByTokenHashForUpdate(tokenHash, db) {
+    const result = await db.query('SELECT * FROM email_verification_tokens WHERE token_hash = $1 LIMIT 1 FOR UPDATE', [tokenHash]);
+    return result.rows[0] || null;
   }
 
-  markUsed(id) {
-    return BD.execute('UPDATE email_verification_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+  markUsed(id, db = BD) {
+    if (typeof db.execute === 'function') return db.execute('UPDATE email_verification_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+    return db.query('UPDATE email_verification_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
   }
 
   invalidatePendingForUser(idUsuario) {

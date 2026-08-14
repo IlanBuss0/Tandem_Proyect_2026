@@ -141,6 +141,22 @@ router.post('/resend-verification', authMiddleware, csrfMiddleware, async (req, 
   }
 });
 
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    res.status(200).json({ ok: true, data: await AuthService.requestPasswordReset(req.body) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/reset-password', async (req, res, next) => {
+  try {
+    res.status(200).json({ ok: true, data: await AuthService.resetPassword(req.body) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get('/tutor-account', authMiddleware, async (req, res, next) => {
   try {
     res.status(200).json({ ok: true, data: await AuthService.getTutorAccount(req.user.id) });
@@ -160,6 +176,14 @@ router.patch('/tutor-account', authMiddleware, csrfMiddleware, async (req, res, 
 router.patch('/password', authMiddleware, csrfMiddleware, async (req, res, next) => {
   try {
     res.status(200).json({ ok: true, data: await AuthService.changePassword(req.user.id, req.body) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch('/email', authMiddleware, csrfMiddleware, async (req, res, next) => {
+  try {
+    res.status(200).json({ ok: true, data: await AuthService.changeEmail(req.user.id, req.body) });
   } catch (e) {
     next(e);
   }

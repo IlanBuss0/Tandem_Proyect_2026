@@ -5,6 +5,7 @@ import BD from '../db/BD.js';
 import AuthRepository from '../repositories/AuthRepository.js';
 import RefreshTokenRepository from '../repositories/RefreshTokenRepository.js';
 import EmailVerificationRepository from '../repositories/EmailVerificationRepository.js';
+import PasswordResetRepository from '../repositories/PasswordResetRepository.js';
 import UsuarioServiceClass from './UsuarioService.js';
 import PertenecienteServiceClass from './PertenecienteService.js';
 import TutorServiceClass from './TutorService.js';
@@ -27,6 +28,7 @@ const ProfesionalService = new ProfesionalServiceClass();
 const EmailService = new EmailServiceClass();
 
 const EMAIL_TOKEN_EXPIRES_MS = 24 * 60 * 60 * 1000; // 24hs
+const PASSWORD_RESET_EXPIRES_MS = 60 * 60 * 1000; // 1h
 const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
 
 // Unicos roles alcanzables desde el registro publico. Administrador (4) queda
@@ -148,16 +150,14 @@ class AuthService {
     if (!token) throw new AppError('token es obligatorio.', 400);
 
     const tokenHash = hashRefreshToken(String(token));
-    const record = await EmailVerificationRepository.findByTokenHash(tokenHash);
-
-    if (!record) throw new AppError('El link de verificacion no es valido.', 400);
-    if (record.used_at) throw new AppError('Este link ya fue usado.', 400);
-    if (new Date(record.expires_at).getTime() <= Date.now()) {
-      throw new AppError('El link de verificacion expiro. Pedi uno nuevo.', 400);
-    }
-
-    await EmailVerificationRepository.markUsed(record.id);
-    await AuthRepository.markEmailVerified(record.id_usuario);
+    await BD.transaction(async (client) => {
+      const record = await EmailVerificationRepository.findByTokenHashForUpdate(tokenHash, client);
+      if (!record) throw new AppError('El link de verificacion no es valido.', 400);
+      if (record.used_at) throw new AppError('Este link ya fue usado.', 400);
+      if (new Date(record.expires_at).getTime() <= Date.now()) throw new AppError('El link de verificacion expiro. Pedi uno nuevo.', 400);
+      await EmailVerificationRepository.markUsed(record.id, client);
+      await AuthRepository.markEmailVerified(record.id_usuario, client);
+    });
 
     return { verified: true };
   }
@@ -169,6 +169,48 @@ class AuthService {
 
     await this._issueAndSendVerificationEmail(user);
     return { sent: true };
+  }
+
+  async requestPasswordReset(data) {
+    const correo = String(data?.correo || '').trim().toLowerCase();
+    if (!EMAIL_REGEX.test(correo)) throw new AppError('El correo no tiene un formato valido.', 400);
+
+    const user = await AuthRepository.findByCorreoOrNombreUsuario(correo);
+    if (user?.activo !== false && user?.correo?.toLowerCase() === correo) {
+      await PasswordResetRepository.invalidatePendingForUser(user.id);
+      const token = crypto.randomBytes(32).toString('hex');
+      await PasswordResetRepository.create({
+        idUsuario: user.id,
+        tokenHash: hashRefreshToken(token),
+        expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRES_MS),
+      });
+      const resetUrl = `${envConfig.appPublicUrl.replace(/\/$/, '')}/restablecer-contrasena?token=${token}`;
+      await EmailService.sendPasswordResetEmailAsync({ to: user.correo, nombre: user.nombre, resetUrl });
+    }
+
+    return { sent: true };
+  }
+
+  async resetPassword(data) {
+    const token = String(data?.token || '');
+    const newPassword = String(data?.contrasena_nueva || '');
+    if (!token) throw new AppError('token es obligatorio.', 400);
+    if (!PASSWORD_REGEX.test(newPassword)) {
+      throw new AppError('La nueva contrasena debe tener al menos 8 caracteres, con letras y numeros.', 400);
+    }
+
+    const tokenHash = hashRefreshToken(token);
+    const passwordHash = await hashValue(newPassword);
+    await BD.transaction(async (client) => {
+      const record = await PasswordResetRepository.findByTokenHashForUpdate(tokenHash, client);
+      if (!record || record.used_at || new Date(record.expires_at).getTime() <= Date.now()) {
+        throw new AppError('El link de recuperacion no es valido o expiro.', 400);
+      }
+      await AuthRepository.updatePasswordHash(record.id_usuario, passwordHash, client);
+      await PasswordResetRepository.markUsed(record.id, client);
+      await RefreshTokenRepository.revokeAllForUser(record.id_usuario, client);
+    });
+    return { changed: true };
   }
 
   async getTutorAccount(idUsuario) {
@@ -225,8 +267,37 @@ class AuthService {
       throw new AppError('La nueva contrasena debe ser diferente de la actual.', 400);
     }
 
-    await AuthRepository.updatePasswordHash(idUsuario, await hashValue(newPassword));
+    const passwordHash = await hashValue(newPassword);
+    await BD.transaction(async (client) => {
+      await AuthRepository.updatePasswordHash(idUsuario, passwordHash, client);
+      await RefreshTokenRepository.revokeAllForUser(idUsuario, client);
+    });
     return { changed: true };
+  }
+
+  async changeEmail(idUsuario, data) {
+    const correo = String(data?.correo_nuevo || '').trim().toLowerCase();
+    const currentPassword = String(data?.contrasena_actual || '');
+    if (!EMAIL_REGEX.test(correo)) throw new AppError('El correo no tiene un formato valido.', 400);
+
+    const user = await AuthRepository.findSafeById(idUsuario);
+    if (!user) throw new AppError('Usuario no encontrado.', 404);
+    if (String(user.correo).toLowerCase() === correo) throw new AppError('El correo nuevo debe ser diferente del actual.', 400);
+
+    const credentials = await AuthRepository.findByCorreoOrNombreUsuario(user.nombre_usuario);
+    if (!currentPassword || !credentials || !(await compareValue(currentPassword, credentials.contrasena_hash))) {
+      throw new AppError('La contrasena actual es incorrecta.', 401);
+    }
+    const duplicate = await AuthRepository.findByCorreoOrNombreUsuario(correo);
+    if (duplicate && Number(duplicate.id) !== Number(idUsuario)) throw new AppError('El correo ya esta registrado.', 409);
+
+    await BD.transaction(async (client) => {
+      await AuthRepository.updateEmail(idUsuario, correo, client);
+      await RefreshTokenRepository.revokeAllForUser(idUsuario, client);
+    });
+    const updated = await AuthRepository.findSafeById(idUsuario);
+    await this._issueAndSendVerificationEmail(updated);
+    return { correo: updated.correo, email_verificado: updated.email_verificado };
   }
 
   async loginWithGoogle(accessToken, rol, data = {}) {
@@ -363,6 +434,7 @@ class AuthService {
     const user = await AuthRepository.findByCorreoOrNombreUsuario(identificador);
 
     if (!user) throw new AppError('Credenciales invalidas', 401);
+    if (user.activo === false) throw new AppError('Cuenta no disponible', 401);
 
     const valid = await compareValue(contrasenaIngresada, user.contrasena_hash);
 
