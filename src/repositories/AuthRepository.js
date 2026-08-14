@@ -38,12 +38,17 @@ class AuthRepository {
     return queryOne(db, 'SELECT id, id_tipo_usuario, nombre_usuario, nombre, apellido, correo, telefono, fecha_nacimiento, fecha_ingreso, activo, email_verificado FROM usuarios WHERE id = $1', [id]);
   }
 
-  updatePasswordHash(id, contrasenaHash) {
-    return BD.execute('UPDATE usuarios SET contrasena_hash = $2 WHERE id = $1', [id, contrasenaHash]);
+  updatePasswordHash(id, contrasenaHash, db = BD) {
+    if (typeof db.execute === 'function') return db.execute('UPDATE usuarios SET contrasena_hash = $2 WHERE id = $1', [id, contrasenaHash]);
+    return db.query('UPDATE usuarios SET contrasena_hash = $2 WHERE id = $1', [id, contrasenaHash]);
   }
 
   markEmailVerified(id) {
     return BD.execute('UPDATE usuarios SET email_verificado = true WHERE id = $1', [id]);
+  }
+
+  updateEmail(id, correo) {
+    return BD.execute('UPDATE usuarios SET correo = $2, email_verificado = false WHERE id = $1', [id, correo]);
   }
 
   findAccountById(id) {

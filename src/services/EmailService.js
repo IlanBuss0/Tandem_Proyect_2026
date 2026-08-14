@@ -46,6 +46,29 @@ export default class EmailService {
     }
   };
 
+  sendPasswordResetEmailAsync = async ({ to, nombre, resetUrl }) => {
+    if (!this.apiKey) {
+      console.log(`[EmailService] RESEND_API_KEY no configurada. Link de recuperacion para ${to}: ${resetUrl}`);
+      return { simulated: true };
+    }
+
+    try {
+      const response = await axios.post(RESEND_URL, {
+        from: envConfig.resendFromEmail,
+        to: [to],
+        subject: 'Restablece tu contrasena de Tandem',
+        html: this._buildPasswordResetHtml(nombre, resetUrl),
+      }, {
+        headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 15000,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('[EmailService] Error enviando mail de recuperacion:', error?.response?.data || error.message);
+      return { simulated: false, error: true };
+    }
+  };
+
   _buildVerificationHtml = (nombre, verifyUrl) => `
     <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
       <h2 style="color:#6F518E;">¡Hola${nombre ? `, ${nombre}` : ''}!</h2>
@@ -56,6 +79,15 @@ export default class EmailService {
         </a>
       </p>
       <p style="color:#888;font-size:13px;">Si no creaste esta cuenta, podés ignorar este mensaje.</p>
+    </div>
+  `;
+
+  _buildPasswordResetHtml = (nombre, resetUrl) => `
+    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2 style="color:#6F518E;">Hola${nombre ? `, ${nombre}` : ''}</h2>
+      <p>Recibimos un pedido para restablecer tu contrasena de Tandem.</p>
+      <p style="margin: 24px 0;"><a href="${resetUrl}" style="background:#6F518E;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Crear nueva contrasena</a></p>
+      <p style="color:#888;font-size:13px;">El enlace vence en una hora. Si no pediste este cambio, podes ignorar este mensaje.</p>
     </div>
   `;
 }
