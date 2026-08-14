@@ -1,9 +1,13 @@
 import ActividadPersonalizadaRepository from '../repositories/ActividadPersonalizadaRepository.js';
+import ActividadAsignadaRepository from '../repositories/ActividadAsignadaRepository.js';
+import AppError from '../modules/errors/AppError.js';
+import { validateResourceScenarioMetadata } from '../modules/activities/resource-scenario.validation.js';
 
 export default class ActividadPersonalizadaService {
   constructor() {
     console.log('Estoy en: ActividadPersonalizadaService.constructor()');
     this.ActividadPersonalizadaRepository = new ActividadPersonalizadaRepository();
+    this.ActividadAsignadaRepository = new ActividadAsignadaRepository();
   }
 
   getAllAsync = async () => {
@@ -41,6 +45,7 @@ export default class ActividadPersonalizadaService {
   createAsync = async (entity) => {
     console.log(`ActividadPersonalizadaService.createAsync(${JSON.stringify(entity)})`);
     this.validarActividadPersonalizadaParaCrear(entity);
+    validateResourceScenarioMetadata(entity.descripcion);
     const newId = await this.ActividadPersonalizadaRepository.createAsync(entity);
     return newId;
   };
@@ -52,8 +57,18 @@ export default class ActividadPersonalizadaService {
     }
     const previousEntity = await this.ActividadPersonalizadaRepository.getByIdAsync(entity.id);
     if (previousEntity == null) return 0;
+    validateResourceScenarioMetadata(entity.descripcion ?? previousEntity.descripcion);
     const rowsAffected = await this.ActividadPersonalizadaRepository.updateAsync(entity);
     return rowsAffected;
+  };
+
+  getResultsForCreatorAsync = async (id, requesterUserId) => {
+    const activity = await this.getByIdAsync(id);
+    if (!activity) throw new AppError('Actividad personalizada no encontrada.', 404);
+    if (Number(activity.id_usuario_creador) !== Number(requesterUserId)) {
+      throw new AppError('No autorizado para consultar estos resultados.', 403);
+    }
+    return await this.ActividadAsignadaRepository.getResultsByCustomActivityIdAsync(id);
   };
 
   deleteByIdAsync = async (id) => {

@@ -17,7 +17,10 @@ export default class ActividadAsignadaRepository {
         id_usuario_asignador,
         id_estado_actividad,
         fecha_asignacion,
-        fecha_completada
+        fecha_completada,
+        puntaje_ultimo,
+        puntaje_mejor,
+        fecha_ultimo_intento
       FROM actividades_asignadas
       ORDER BY id DESC
     `;
@@ -37,7 +40,10 @@ export default class ActividadAsignadaRepository {
         id_usuario_asignador,
         id_estado_actividad,
         fecha_asignacion,
-        fecha_completada
+        fecha_completada,
+        puntaje_ultimo,
+        puntaje_mejor,
+        fecha_ultimo_intento
       FROM actividades_asignadas
       WHERE id = $1
     `;
@@ -57,7 +63,10 @@ export default class ActividadAsignadaRepository {
         id_usuario_asignador,
         id_estado_actividad,
         fecha_asignacion,
-        fecha_completada
+        fecha_completada,
+        puntaje_ultimo,
+        puntaje_mejor,
+        fecha_ultimo_intento
       FROM actividades_asignadas
       WHERE id_perteneciente = $1
       ORDER BY id DESC
@@ -140,6 +149,55 @@ export default class ActividadAsignadaRepository {
     ];
 
     return await BD.execute(sql, values);
+  };
+
+  completeAsync = async (id, score = null) => {
+    const sql = `
+      UPDATE actividades_asignadas
+      SET
+        id_estado_actividad = COALESCE(
+          (SELECT id FROM estados_actividades WHERE LOWER(nombre) LIKE '%complet%' ORDER BY id LIMIT 1),
+          id_estado_actividad
+        ),
+        fecha_completada = COALESCE(fecha_completada, NOW()),
+        puntaje_ultimo = CASE WHEN $2::smallint IS NULL THEN puntaje_ultimo ELSE $2 END,
+        puntaje_mejor = CASE
+          WHEN $2::smallint IS NULL THEN puntaje_mejor
+          ELSE GREATEST(COALESCE(puntaje_mejor, $2), $2)
+        END,
+        fecha_ultimo_intento = CASE WHEN $2::smallint IS NULL THEN fecha_ultimo_intento ELSE NOW() END
+      WHERE id = $1
+      RETURNING
+        id,
+        id_estado_actividad,
+        fecha_completada,
+        puntaje_ultimo,
+        puntaje_mejor,
+        fecha_ultimo_intento
+    `;
+
+    return await BD.queryOne(sql, [id, score]);
+  };
+
+  getResultsByCustomActivityIdAsync = async (idActividadPersonalizada) => {
+    const sql = `
+      SELECT
+        aa.id AS id_actividad_asignada,
+        aa.id_perteneciente,
+        p.id_usuario AS id_usuario_perteneciente,
+        TRIM(CONCAT(u.nombre, ' ', u.apellido)) AS nombre,
+        aa.fecha_completada IS NOT NULL AS completada,
+        aa.puntaje_ultimo,
+        aa.puntaje_mejor,
+        aa.fecha_ultimo_intento
+      FROM actividades_asignadas aa
+      INNER JOIN pertenecientes p ON p.id = aa.id_perteneciente
+      INNER JOIN usuarios u ON u.id = p.id_usuario
+      WHERE aa.id_actividad_personalizada = $1
+      ORDER BY u.nombre, u.apellido, aa.id
+    `;
+
+    return await BD.query(sql, [idActividadPersonalizada]);
   };
 
   deleteByIdAsync = async (id) => {
