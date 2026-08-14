@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import TutorService from '../services/TutorService.js';
 import Tutor from '../entities/Tutor.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 const currentService = new TutorService();
@@ -28,24 +29,30 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('', async (req, res) => {
-  try {
-    const entity = new Tutor(req.body);
-    const newId = await currentService.createAsync(entity);
-    if (newId > 0) res.status(StatusCodes.CREATED).json({ message: `Se creo el tutor con id: ${newId}`, id: newId });
-    else res.status(StatusCodes.BAD_REQUEST).json({ message: 'No se pudo crear el tutor.' });
-  } catch (error) {
-    res.status(StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);
-  }
+  res.status(StatusCodes.FORBIDDEN).json({
+    message: 'Los perfiles de tutor solo se crean mediante el registro seguro.',
+  });
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const entity = new Tutor(req.body);
-    if (entity.id && parseInt(entity.id) !== id) {
-      return res.status(StatusCodes.BAD_REQUEST).send(`El id de la URL (${id}) no coincide con el id del body (${entity.id}).`);
+    const previous = await currentService.getByIdAsync(id);
+    if (previous == null) {
+      return res.status(StatusCodes.NOT_FOUND).send(`No se encontro el tutor con id: ${id}.`);
     }
-    entity.id = id;
+
+    const isOwner = Number(previous.id_usuario) === Number(req.user.id);
+    const isAdmin = Number(req.account?.id_tipo_usuario) === 4;
+    if (!isOwner && !isAdmin) {
+      return res.status(StatusCodes.FORBIDDEN).json({ message: 'No autorizado para modificar este tutor.' });
+    }
+
+    const entity = new Tutor({
+      ...previous,
+      id,
+      parentesco: req.body?.parentesco ?? previous.parentesco,
+    });
     const rowsAffected = await currentService.updateAsync(entity);
     if (rowsAffected !== 0) res.status(StatusCodes.OK).json({ message: `Se actualizo el tutor con id: ${id}`, rowsAffected });
     else res.status(StatusCodes.NOT_FOUND).send(`No se encontro el tutor con id: ${id}.`);
@@ -55,14 +62,9 @@ router.put('/:id', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const rowCount = await currentService.deleteByIdAsync(id);
-    if (rowCount !== 0) res.status(StatusCodes.OK).json({ message: `Se elimino el tutor con id: ${id}`, rowsAffected: rowCount });
-    else res.status(StatusCodes.NOT_FOUND).send(`No se encontro el tutor con id: ${id}.`);
-  } catch (error) {
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
-  }
+  res.status(StatusCodes.FORBIDDEN).json({
+    message: 'La eliminacion de perfiles de tutor no esta disponible desde este endpoint.',
+  });
 });
 
 export default router;
