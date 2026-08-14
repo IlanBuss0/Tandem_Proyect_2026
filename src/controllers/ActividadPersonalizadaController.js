@@ -44,6 +44,16 @@ router.get('', async (req, res) => {
   }
 });
 
+router.get('/:id/resultados', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const results = await currentService.getResultsForCreatorAsync(id, req.user.id);
+    res.status(StatusCodes.OK).json(results);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);

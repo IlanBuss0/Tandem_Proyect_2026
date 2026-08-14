@@ -62,6 +62,18 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+router.post('/:id/completar', async (req, res) => {
+  try {
+    const score = req.body?.puntaje === undefined || req.body?.puntaje === null
+      ? null
+      : Number(req.body.puntaje);
+    const result = await currentService.completeForUserAsync(req.params.id, req.user.id, score);
+    res.status(StatusCodes.OK).json(result);
+  } catch (error) {
+    sendError(res, error, StatusCodes.BAD_REQUEST);
+  }
+});
+
 router.post('', async (req, res) => {
   try {
     console.log('ActividadAsignadaController.create');

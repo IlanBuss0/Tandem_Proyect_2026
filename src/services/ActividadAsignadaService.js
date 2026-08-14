@@ -4,6 +4,8 @@ import PertenecienteRepository from '../repositories/PertenecienteRepository.js'
 import NotificationProducerService from './NotificationProducerService.js';
 import ActividadPersonalizadaRepository from '../repositories/ActividadPersonalizadaRepository.js';
 import AppError from '../modules/errors/AppError.js';
+import AuthorizationService from './AuthorizationService.js';
+import { PERTENECIENTE_PERMISSIONS } from '../modules/security/permissions.constants.js';
 
 export default class ActividadAsignadaService {
   constructor() {
@@ -111,6 +113,47 @@ export default class ActividadAsignadaService {
       }
     }
     return rowsAffected;
+  };
+
+  completeForUserAsync = async (id, idUsuario, score = null) => {
+    const numericId = Number(id);
+    if (!Number.isInteger(numericId) || numericId <= 0) {
+      throw new AppError('El id de la actividad asignada es invalido.', 400);
+    }
+    if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) {
+      throw new AppError('El puntaje debe ser un entero entre 0 y 100.', 400);
+    }
+
+    const previousEntity = await this.ActividadAsignadaRepository.getByIdAsync(numericId);
+    if (!previousEntity) throw new AppError('Actividad asignada no encontrada.', 404);
+
+    const context = await AuthorizationService.getUserContext(idUsuario);
+    if (Number(context?.perteneciente?.id) !== Number(previousEntity.id_perteneciente)) {
+      throw new AppError('Solo el perteneciente asignado puede completar esta actividad.', 403);
+    }
+    await AuthorizationService.assertCanWritePertenecienteResource(idUsuario, previousEntity.id_perteneciente, {
+      pertenecientePermissionName: PERTENECIENTE_PERMISSIONS.COMPLETAR_ACTIVIDADES,
+      allowTutor: false,
+    });
+
+    const completed = await this.ActividadAsignadaRepository.completeAsync(numericId, score);
+    await cacheService.delByPattern(`actividad-asignada.${numericId}`);
+    await cacheService.delByPattern(`actividad-asignada.perteneciente.${previousEntity.id_perteneciente}`);
+
+    if (!previousEntity.fecha_completada && previousEntity.id_usuario_asignador !== Number(idUsuario)) {
+      await this.NotificationProducerService.createAsync({
+        recipientUserId: previousEntity.id_usuario_asignador,
+        actorUserId: Number(idUsuario),
+        contextUserId: Number(idUsuario),
+        typeName: 'InformaciÃ³n',
+        title: 'Actividad completada',
+        body: 'Se completÃ³ una actividad asignada.',
+        referenceType: 'activity',
+        referenceId: numericId,
+      });
+    }
+
+    return completed;
   };
 
   deleteByIdAsync = async (id) => {
