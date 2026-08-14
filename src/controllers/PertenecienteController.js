@@ -4,16 +4,36 @@ import PertenecienteService from '../services/PertenecienteService.js';
 import Perteneciente from '../entities/Perteneciente.js';
 import AuthorizationService from '../services/AuthorizationService.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
-import { PERTENECIENTE_PERMISSIONS } from '../modules/security/permissions.constants.js';
+import {
+  PERTENECIENTE_PERMISSIONS,
+  PROFESIONAL_PERMISSIONS,
+} from '../modules/security/permissions.constants.js';
 
 const router = Router();
 const currentService = new PertenecienteService();
 
+async function canReadProfile(req, idPerteneciente) {
+  if (Number(req.account?.id_tipo_usuario) === 4) return true;
+
+  try {
+    await AuthorizationService.assertCanReadPertenecienteResource(
+      req.user.id,
+      idPerteneciente,
+      PROFESIONAL_PERMISSIONS.VER_HISTORIAL,
+    );
+    return true;
+  } catch (error) {
+    if (error?.statusCode === 403) return false;
+    throw error;
+  }
+}
+
 router.get('', async (req, res) => {
   try {
     const returnArray = await currentService.getAllAsync();
-    if (returnArray != null) res.status(StatusCodes.OK).json(returnArray);
-    else res.status(StatusCodes.INTERNAL_SERVER_ERROR).send('Error interno.');
+    if (returnArray == null) return res.status(StatusCodes.INTERNAL_SERVER_ERROR).send('Error interno.');
+    const visibility = await Promise.all(returnArray.map((item) => canReadProfile(req, item.id)));
+    res.status(StatusCodes.OK).json(returnArray.filter((_, index) => visibility[index]));
   } catch (error) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
   }
@@ -23,7 +43,8 @@ router.get('/usuario/:idUsuario', async (req, res) => {
   try {
     const idUsuario = parseInt(req.params.idUsuario);
     const returnEntity = await currentService.getByUsuarioIdAsync(idUsuario);
-    if (returnEntity != null) res.status(StatusCodes.OK).json(returnEntity);
+    if (returnEntity != null && await canReadProfile(req, returnEntity.id)) res.status(StatusCodes.OK).json(returnEntity);
+    else if (returnEntity != null) res.status(StatusCodes.FORBIDDEN).json({ message: 'No autorizado para consultar este perfil.' });
     else res.status(StatusCodes.NOT_FOUND).send(`No se encontro el perteneciente del usuario con id: ${idUsuario}.`);
   } catch (error) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
@@ -34,7 +55,8 @@ router.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const returnEntity = await currentService.getByIdAsync(id);
-    if (returnEntity != null) res.status(StatusCodes.OK).json(returnEntity);
+    if (returnEntity != null && await canReadProfile(req, returnEntity.id)) res.status(StatusCodes.OK).json(returnEntity);
+    else if (returnEntity != null) res.status(StatusCodes.FORBIDDEN).json({ message: 'No autorizado para consultar este perfil.' });
     else res.status(StatusCodes.NOT_FOUND).send(`No se encontro el perteneciente con id: ${id}.`);
   } catch (error) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
@@ -42,14 +64,9 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('', async (req, res) => {
-  try {
-    const entity = new Perteneciente(req.body);
-    const newId = await currentService.createAsync(entity);
-    if (newId > 0) res.status(StatusCodes.CREATED).json({ message: `Se creo el perteneciente con id: ${newId}`, id: newId });
-    else res.status(StatusCodes.BAD_REQUEST).json({ message: 'No se pudo crear el perteneciente.' });
-  } catch (error) {
-    res.status(StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);
-  }
+  res.status(StatusCodes.FORBIDDEN).json({
+    message: 'Los perfiles de perteneciente solo se crean mediante el registro seguro.',
+  });
 });
 
 function hasSensitiveProfileChanges(body, previous) {

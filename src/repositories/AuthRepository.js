@@ -43,12 +43,14 @@ class AuthRepository {
     return db.query('UPDATE usuarios SET contrasena_hash = $2 WHERE id = $1', [id, contrasenaHash]);
   }
 
-  markEmailVerified(id) {
-    return BD.execute('UPDATE usuarios SET email_verificado = true WHERE id = $1', [id]);
+  markEmailVerified(id, db = BD) {
+    if (typeof db.execute === 'function') return db.execute('UPDATE usuarios SET email_verificado = true WHERE id = $1', [id]);
+    return db.query('UPDATE usuarios SET email_verificado = true WHERE id = $1', [id]);
   }
 
-  updateEmail(id, correo) {
-    return BD.execute('UPDATE usuarios SET correo = $2, email_verificado = false WHERE id = $1', [id, correo]);
+  updateEmail(id, correo, db = BD) {
+    if (typeof db.execute === 'function') return db.execute('UPDATE usuarios SET correo = $2, email_verificado = false WHERE id = $1', [id, correo]);
+    return db.query('UPDATE usuarios SET correo = $2, email_verificado = false WHERE id = $1', [id, correo]);
   }
 
   findAccountById(id) {

@@ -21,6 +21,7 @@
     "test:professional-core": "node --test test/professional-core.test.js",
     "test:reportes": "node --test test/reportes-profesionales.test.js",
     "test:auth-register": "node --test test/auth-register.test.js",
+    "test:account-security": "node --test test/account-security.test.js test/auth-register.test.js test/security-hashing.test.js",
     "test:security": "node --test test/security-hashing.test.js test/field-encryption.test.js",
     "security:audit-passwords": "node scripts/audit-password-hashes.mjs",
     "security:migrate-plaintext-passwords": "node scripts/migrate-plaintext-passwords.mjs",
