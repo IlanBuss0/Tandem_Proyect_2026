@@ -150,16 +150,14 @@ class AuthService {
     if (!token) throw new AppError('token es obligatorio.', 400);
 
     const tokenHash = hashRefreshToken(String(token));
-    const record = await EmailVerificationRepository.findByTokenHash(tokenHash);
-
-    if (!record) throw new AppError('El link de verificacion no es valido.', 400);
-    if (record.used_at) throw new AppError('Este link ya fue usado.', 400);
-    if (new Date(record.expires_at).getTime() <= Date.now()) {
-      throw new AppError('El link de verificacion expiro. Pedi uno nuevo.', 400);
-    }
-
-    await EmailVerificationRepository.markUsed(record.id);
-    await AuthRepository.markEmailVerified(record.id_usuario);
+    await BD.transaction(async (client) => {
+      const record = await EmailVerificationRepository.findByTokenHashForUpdate(tokenHash, client);
+      if (!record) throw new AppError('El link de verificacion no es valido.', 400);
+      if (record.used_at) throw new AppError('Este link ya fue usado.', 400);
+      if (new Date(record.expires_at).getTime() <= Date.now()) throw new AppError('El link de verificacion expiro. Pedi uno nuevo.', 400);
+      await EmailVerificationRepository.markUsed(record.id, client);
+      await AuthRepository.markEmailVerified(record.id_usuario, client);
+    });
 
     return { verified: true };
   }
@@ -269,7 +267,11 @@ class AuthService {
       throw new AppError('La nueva contrasena debe ser diferente de la actual.', 400);
     }
 
-    await AuthRepository.updatePasswordHash(idUsuario, await hashValue(newPassword));
+    const passwordHash = await hashValue(newPassword);
+    await BD.transaction(async (client) => {
+      await AuthRepository.updatePasswordHash(idUsuario, passwordHash, client);
+      await RefreshTokenRepository.revokeAllForUser(idUsuario, client);
+    });
     return { changed: true };
   }
 
@@ -289,7 +291,10 @@ class AuthService {
     const duplicate = await AuthRepository.findByCorreoOrNombreUsuario(correo);
     if (duplicate && Number(duplicate.id) !== Number(idUsuario)) throw new AppError('El correo ya esta registrado.', 409);
 
-    await AuthRepository.updateEmail(idUsuario, correo);
+    await BD.transaction(async (client) => {
+      await AuthRepository.updateEmail(idUsuario, correo, client);
+      await RefreshTokenRepository.revokeAllForUser(idUsuario, client);
+    });
     const updated = await AuthRepository.findSafeById(idUsuario);
     await this._issueAndSendVerificationEmail(updated);
     return { correo: updated.correo, email_verificado: updated.email_verificado };
@@ -429,6 +434,7 @@ class AuthService {
     const user = await AuthRepository.findByCorreoOrNombreUsuario(identificador);
 
     if (!user) throw new AppError('Credenciales invalidas', 401);
+    if (user.activo === false) throw new AppError('Cuenta no disponible', 401);
 
     const valid = await compareValue(contrasenaIngresada, user.contrasena_hash);
 

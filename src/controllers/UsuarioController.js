@@ -2,10 +2,10 @@ import { Router } from 'express';
 import { StatusCodes } from 'http-status-codes';
 
 import UsuarioService from '../services/UsuarioService.js';
-import Usuario from '../entities/Usuario.js';
 import PertenecienteRepository from '../repositories/PertenecienteRepository.js';
 import AuthorizationService from '../services/AuthorizationService.js';
 import { PERTENECIENTE_PERMISSIONS } from '../modules/security/permissions.constants.js';
+import { pickEditableUserFields, toPublicUser } from '../modules/security/account-update.policy.js';
 
 const router = Router();
 const currentService = new UsuarioService();
@@ -27,7 +27,9 @@ router.get('', async (req, res) => {
     const returnArray = await currentService.getAllAsync();
 
     if (returnArray != null) {
-      res.status(StatusCodes.OK).json(returnArray.map(stripHash));
+      const requester = await currentService.getByIdAsync(Number(req.user.id));
+      const isAdmin = Number(requester?.id_tipo_usuario) === 4;
+      res.status(StatusCodes.OK).json(returnArray.map(isAdmin ? stripHash : toPublicUser));
     } else {
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).send('Error interno.');
     }
@@ -46,7 +48,9 @@ router.get('/:id', async (req, res) => {
     const returnEntity = await currentService.getByIdAsync(id);
 
     if (returnEntity != null) {
-      res.status(StatusCodes.OK).json(stripHash(returnEntity));
+      const requester = await currentService.getByIdAsync(Number(req.user.id));
+      const canSeePrivate = Number(req.user.id) === id || Number(requester?.id_tipo_usuario) === 4;
+      res.status(StatusCodes.OK).json(canSeePrivate ? stripHash(returnEntity) : toPublicUser(returnEntity));
     } else {
       res.status(StatusCodes.NOT_FOUND).send(`No se encontro el usuario con id: ${id}.`);
     }
@@ -57,27 +61,7 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('', async (req, res) => {
-  try {
-    console.log('UsuarioController.create');
-
-    const entity = new Usuario(req.body);
-
-    const newId = await currentService.createAsync(entity);
-
-    if (newId > 0) {
-      res.status(StatusCodes.CREATED).json({
-        message: `Se creo el usuario con id: ${newId}`,
-        id: newId,
-      });
-    } else {
-      res.status(StatusCodes.BAD_REQUEST).json({
-        message: 'No se pudo crear el usuario.',
-      });
-    }
-  } catch (error) {
-    console.log(error);
-    res.status(StatusCodes.BAD_REQUEST).send(`Error: ${error.message}`);
-  }
+  res.status(StatusCodes.FORBIDDEN).json({ error: 'Las cuentas solo pueden crearse mediante el registro seguro.' });
 });
 
 router.put('/:id', async (req, res) => {
@@ -86,7 +70,8 @@ router.put('/:id', async (req, res) => {
 
     console.log(`UsuarioController.update(${id})`);
 
-    if (Number(req.user.id) !== id) {
+    const isSelf = Number(req.user.id) === id;
+    if (!isSelf) {
       // No es el propio usuario: el unico otro caso legitimo es un
       // tutor/profesional autorizado editando los datos basicos del
       // perteneciente que tiene vinculado (nombre, correo, telefono, etc).
@@ -110,15 +95,10 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    // contrasena_hash e id_tipo_usuario nunca se aceptan desde el body: un
-    // hash propio ahi permitiria tomar cualquier cuenta, y el tipo de
-    // usuario habilitaria escalar de rol. Se ignoran a proposito.
-    const entity = new Usuario({
-      ...req.body,
-      id,
-      contrasena_hash: undefined,
-      id_tipo_usuario: undefined,
-    });
+    // Correo, contrasena, rol, estado y fecha de ingreso solo cambian por
+    // flujos dedicados. La whitelist tambien evita reactivar una cuenta por
+    // el valor por defecto de la entidad Usuario.
+    const entity = { id, ...pickEditableUserFields(req.body, { self: isSelf }) };
 
     const rowsAffected = await currentService.updateAsync(entity);
 
@@ -137,25 +117,7 @@ router.put('/:id', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-
-    console.log(`UsuarioController.delete(${id})`);
-
-    const rowCount = await currentService.deleteByIdAsync(id);
-
-    if (rowCount !== 0) {
-      res.status(StatusCodes.OK).json({
-        message: `Se elimino/desactivo el usuario con id: ${id}`,
-        rowsAffected: rowCount,
-      });
-    } else {
-      res.status(StatusCodes.NOT_FOUND).send(`No se encontro el usuario con id: ${id}.`);
-    }
-  } catch (error) {
-    console.log(error);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
-  }
+  res.status(StatusCodes.FORBIDDEN).json({ error: 'La desactivacion de cuentas requiere un flujo administrativo seguro.' });
 });
 
 export default router;
