@@ -164,6 +164,8 @@ app.use('/api/auth/register', authRateLimiter);
 app.use('/api/auth/google', authRateLimiter);
 app.use('/api/auth/refresh', refreshRateLimiter);
 app.use('/api/auth/resend-verification', resendVerificationRateLimiter);
+app.use('/api/auth/forgot-password', resendVerificationRateLimiter);
+app.use('/api/auth/reset-password', authRateLimiter);
 app.use('/api/auth', AuthController);
 app.use('/api/pictograms', PictogramaController);
 app.use('/api/pictogramas', PictogramaController);

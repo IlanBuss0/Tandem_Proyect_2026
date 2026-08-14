@@ -67,3 +67,24 @@ test('register rechaza si falta nombre_usuario, nombre o apellido', async () => 
     error => error.statusCode === 400,
   );
 });
+
+test('recuperacion rechaza un correo con formato invalido', async () => {
+  await assert.rejects(
+    () => AuthService.requestPasswordReset({ correo: 'no-es-un-mail' }),
+    error => error.statusCode === 400 && /correo/.test(error.message),
+  );
+});
+
+test('restablecimiento valida la nueva contrasena antes de consultar la base', async () => {
+  await assert.rejects(
+    () => AuthService.resetPassword({ token: 'token', contrasena_nueva: 'corta' }),
+    error => error.statusCode === 400 && /contrasena/.test(error.message),
+  );
+});
+
+test('cambio de correo valida el formato antes de consultar la base', async () => {
+  await assert.rejects(
+    () => AuthService.changeEmail(1, { correo_nuevo: 'invalido', contrasena_actual: 'abc12345' }),
+    error => error.statusCode === 400 && /correo/.test(error.message),
+  );
+});
