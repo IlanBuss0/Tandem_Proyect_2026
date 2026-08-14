@@ -260,6 +260,20 @@ components:
           type: string
           format: date-time
           example: '2026-05-26T19:00:00Z'
+        puntaje_ultimo:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+        puntaje_mejor:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+        fecha_ultimo_intento:
+          type: string
+          format: date-time
+          nullable: true
     FavoritoActividad:
       type: object
       properties:
@@ -1585,6 +1599,33 @@ paths:
           description: 'Eliminado correctamente'
         '404':
           description: 'No encontrado'
+  '/actividades-asignadas/{id}/completar':
+    post:
+      summary: 'Completar una actividad asignada y registrar su puntaje'
+      tags:
+        - 'Actividades y Seguimiento'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                puntaje:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+      responses:
+        '200':
+          description: 'Actividad completada'
+        '403':
+          description: 'No autorizado para completar la asignación'
   /actividades-personalizadas:
     get:
       summary: 'Listar actividades-personalizadas'
@@ -1682,6 +1723,22 @@ paths:
           description: 'Eliminado correctamente'
         '404':
           description: 'No encontrado'
+  '/actividades-personalizadas/{id}/resultados':
+    get:
+      summary: 'Consultar resultados de una actividad personalizada propia'
+      tags:
+        - 'Actividades y Seguimiento'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 'Resultados por destinatario'
+        '403':
+          description: 'Solo el creador puede consultar los resultados'
   '/actividades/{id}':
     get:
       summary: 'Obtener Actividad por ID'

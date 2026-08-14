@@ -65,6 +65,8 @@
     "db:tareas-reportes-programados": "node scripts/create-tareas-reportes-programados-table.mjs",
     "db:email-tokens": "node scripts/create-email-verification-tokens-table.mjs",
     "db:nivel-apoyo-sugerido": "node scripts/add-nivel-apoyo-sugerido-column.mjs",
+    "db:activity-results": "node scripts/add-activity-result-fields.mjs",
+    "test:resource-scenario": "node --test test/resource-scenario.test.js",
     "db:pictogram-license": "node scripts/add-pictogram-license-columns.mjs",
     "db:import-pictograms": "node scripts/import-pictogram-catalog.mjs",
     "pictograms:mulberry": "node scripts/import-mulberry.mjs",
