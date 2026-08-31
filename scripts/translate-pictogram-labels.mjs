@@ -15,7 +15,7 @@ import { assertLicenseAllowed } from '../src/modules/pictograms/license-whitelis
 //
 // Uso: npm run pictograms:translate -- --terms=hand washing,bus,t-shirt
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL_NAME = 'llama-3.3-70b-versatile';
+const MODEL_NAME = 'openai/gpt-oss-20b';
 
 // Terminos en ingles que corresponden a los huecos de vocabulario
 // rioplatense/nucleo detectados con detect-pictogram-gaps.mjs. Se buscan en

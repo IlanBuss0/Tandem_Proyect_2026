@@ -12,7 +12,7 @@ import { normalizeSearchText } from '../src/services/PictogramaService.js';
 // Uso: node scripts/poc-pictogramize.mjs [--no-groq] [--text="frase suelta"]
 
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const PRIMARY_MODEL = 'llama-3.3-70b-versatile';
+const PRIMARY_MODEL = 'openai/gpt-oss-20b';
 
 const TEXTOS = [
   'Despertarse y apagar la alarma',
