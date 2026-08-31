@@ -1,0 +1,87 @@
+import axios from 'axios';
+import * as cheerio from 'cheerio';
+
+const DEFAULT_URL = 'https://www.argentina.gob.ar/salud/buscador-nacional-de-profesionales-de-la-salud';
+
+export class RefepsProviderError extends Error {
+  constructor(message, code = 'REFEPS_ERROR') {
+    super(message);
+    this.name = 'RefepsProviderError';
+    this.code = code;
+  }
+}
+
+export default class RefepsPublicProvider {
+  constructor({ http = axios, url = DEFAULT_URL, timeout = 8000, retries = 1 } = {}) {
+    this.http = http;
+    this.url = url;
+    this.timeout = timeout;
+    this.retries = retries;
+  }
+
+  buscarPorMatricula = async (numeroMatricula) => {
+    console.info('[ProfessionalVerification] REFEPS request started');
+    let lastError;
+    for (let attempt = 0; attempt <= this.retries; attempt += 1) {
+      try {
+        return await this.request(numeroMatricula);
+      } catch (error) {
+        lastError = error;
+        if (attempt < this.retries) continue;
+      }
+    }
+    console.error('[ProfessionalVerification] REFEPS request failed:', lastError?.code || lastError?.message);
+    throw lastError instanceof RefepsProviderError ? lastError : new RefepsProviderError('No se pudo consultar REFEPS');
+  };
+
+  async request(numeroMatricula) {
+    const getResponse = await this.http.get(this.url, { timeout: this.timeout, validateStatus: status => status === 200 });
+    const $ = cheerio.load(getResponse.data);
+    const formBuildId = $('#consulta-profesionales-form input[name="form_build_id"]').val();
+    if (!formBuildId) throw new RefepsProviderError('Estructura inicial inesperada', 'STRUCTURE_MISMATCH');
+
+    const cookie = (getResponse.headers?.['set-cookie'] || []).map(value => value.split(';')[0]).join('; ');
+    const body = new URLSearchParams({
+      searchBy: 'matricula', dni: '', matricula: String(numeroMatricula), apellidonombre: '',
+      op: 'Consultar', form_build_id: String(formBuildId), form_id: 'argobar_consulta_refeps_profesionales', tarro_de_miel: '',
+    });
+    const response = await this.http.post(this.url, body.toString(), {
+      timeout: this.timeout,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...(cookie ? { Cookie: cookie } : {}) },
+      validateStatus: status => status === 200,
+    });
+    return this.parseHtml(response.data, numeroMatricula);
+  }
+
+  parseHtml(html, numeroMatricula) {
+    const $ = cheerio.load(String(html ?? ''));
+    const scripts = $('script').map((_index, element) => $(element).html() || '').get();
+    const script = scripts.find(value => value.includes('Drupal.settings.refepsProfesionales.allItems'));
+
+    if (!script) {
+      if (/no se (?:encontraron|encontró)|sin resultados/i.test($.text())) return { found: false, results: [] };
+      console.error('[ProfessionalVerification] REFEPS parser structure mismatch');
+      throw new RefepsProviderError('Estructura de resultados inesperada', 'STRUCTURE_MISMATCH');
+    }
+
+    const json = script.match(/Drupal\.settings\.refepsProfesionales\.allItems\s*=\s*(\[[\s\S]*?\]);/)?.[1];
+    if (!json) throw new RefepsProviderError('JSON de resultados ausente', 'STRUCTURE_MISMATCH');
+
+    let items;
+    try { items = JSON.parse(json); } catch { throw new RefepsProviderError('JSON de resultados invalido', 'STRUCTURE_MISMATCH'); }
+    const target = String(numeroMatricula).trim();
+    const results = items.flatMap(item => (item.profesiones || []).flatMap(profesion =>
+      (profesion.matriculas || []).filter(record => String(record.matricula).trim() === target).map(record => ({
+        nombre: item.nombre || null,
+        apellido: item.apellido || null,
+        dni: item.nroDoc || null,
+        matricula: record.matricula,
+        profesion: profesion.profesionReferencia || null,
+        jurisdiccion: record.provinciaMatricula || null,
+        habilitado: String(record.situacionMatricula).toLowerCase() === 'habilitado',
+        estado: record.situacionMatricula || null,
+        especialidades: profesion.refepsEspecialidad ? [profesion.refepsEspecialidad] : [],
+      }))));
+    return { found: results.length > 0, ambiguous: results.length > 1, results };
+  }
+}

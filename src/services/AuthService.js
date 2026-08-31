@@ -20,12 +20,14 @@ import {
   hashRefreshToken,
 } from '../modules/security/refresh-token.helper.js';
 import { envConfig } from '../configs/env.config.js';
+import ValidacionProfesionalServiceClass from './ValidacionProfesionalService.js';
 
 const UsuarioService = new UsuarioServiceClass();
 const PertenecienteService = new PertenecienteServiceClass();
 const TutorService = new TutorServiceClass();
 const ProfesionalService = new ProfesionalServiceClass();
 const EmailService = new EmailServiceClass();
+const ValidacionProfesionalService = new ValidacionProfesionalServiceClass();
 
 const EMAIL_TOKEN_EXPIRES_MS = 24 * 60 * 60 * 1000; // 24hs
 const PASSWORD_RESET_EXPIRES_MS = 60 * 60 * 1000; // 1h
@@ -69,7 +71,7 @@ class AuthService {
     };
   }
 
-  async register(data) {
+  async register(data, dniFrente = null) {
     const rol = String(data?.rol || '').trim().toLowerCase();
     const idTipoUsuario = ROLES_REGISTRABLES[rol];
 
@@ -92,6 +94,10 @@ class AuthService {
 
     if (!nombreUsuario || !nombre || !apellido) {
       throw new AppError('nombre_usuario, nombre y apellido son obligatorios.', 400);
+    }
+
+    if (idTipoUsuario === ROLES_REGISTRABLES.profesional && !dniFrente?.buffer) {
+      throw new AppError('La fotografia del frente del DNI es obligatoria para profesionales.', 400);
     }
 
     // Whitelist estricta: nunca se aceptan contrasena_hash, activo, ni
@@ -122,6 +128,14 @@ class AuthService {
     }
 
     const user = await AuthRepository.findSafeById(newId);
+    let professionalVerification;
+    if (idTipoUsuario === ROLES_REGISTRABLES.profesional) {
+      professionalVerification = await ValidacionProfesionalService.verifyRegistrationAsync({
+        idUsuario: newId,
+        imageBuffer: dniFrente.buffer,
+        declaredIdentity: { nombre, apellido },
+      });
+    }
 
     // Best-effort: si Resend esta caido o sin configurar no debe romper el
     // registro (EmailService ya loguea el link en consola como fallback).
@@ -129,7 +143,8 @@ class AuthService {
       console.error('[AuthService] No se pudo enviar el mail de verificacion:', error.message);
     });
 
-    return this.createSession(user);
+    const session = await this.createSession(user);
+    return professionalVerification ? { ...session, professionalVerification } : session;
   }
 
   _issueAndSendVerificationEmail = async (user) => {

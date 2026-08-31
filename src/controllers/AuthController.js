@@ -4,6 +4,8 @@ import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { csrfMiddleware } from '../middlewares/csrf.middleware.js';
 import { envConfig } from '../configs/env.config.js';
 import { ACCESS_COOKIE_NAME, CSRF_COOKIE_NAME, REFRESH_COOKIE_NAME } from '../configs/auth-cookies.config.js';
+import { uploadDniFrente, validateMagicBytes } from '../middlewares/upload.middleware.js';
+import AppError from '../modules/errors/AppError.js';
 
 const router = Router();
 
@@ -75,9 +77,12 @@ function clearCsrfCookie(res) {
   });
 }
 
-router.post('/register', async (req, res, next) => {
+router.post('/register', uploadDniFrente.single('dni_frente'), async (req, res, next) => {
   try {
-    sendSession(res, 201, await AuthService.register(req.body));
+    if (req.file && !validateMagicBytes(req.file.buffer, req.file.mimetype)) {
+      throw new AppError('El archivo del DNI no coincide con el formato declarado.', 400);
+    }
+    sendSession(res, 201, await AuthService.register(req.body, req.file));
   } catch (e) {
     next(e);
   }

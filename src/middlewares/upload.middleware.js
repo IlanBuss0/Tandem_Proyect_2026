@@ -47,4 +47,17 @@ export const upload = multer({
   limits: { fileSize: MAX_SIZE_BYTES },
 });
 
+export const uploadDniFrente = multer({
+  storage,
+  fileFilter(_req, file, cb) {
+    const mimetype = file.mimetype === 'image/jpg' ? 'image/jpeg' : file.mimetype;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(mimetype)) {
+      return cb(new Error('El frente del DNI debe ser una imagen PNG, JPG o WebP.'), false);
+    }
+    file.mimetype = mimetype;
+    cb(null, true);
+  },
+  limits: { fileSize: MAX_SIZE_BYTES },
+});
+
 export { validateMagicBytes, MAX_SIZE_BYTES as UPLOAD_MAX_SIZE };
