@@ -25,19 +25,14 @@ import { cacheService } from './CacheService.js';
 //     por falta de cupo de Groq)
 
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
-// Modelo principal y de respaldo. El plan gratis de Groq limita el modelo
-// grande a 100.000 tokens POR DIA, que no alcanza para las ~5.900 etiquetas
-// del catalogo completo. Cuando se agota el cupo diario, reintentar no sirve
-// (hay que esperar al reset), asi que se cambia al modelo chico, que tiene un
-// limite diario mucho mas alto y rinde igual para traducir etiquetas de una o
-// dos palabras.
-const PRIMARY_MODEL = 'llama-3.3-70b-versatile';
-const FALLBACK_MODEL = 'llama-3.1-8b-instant';
-// El modelo grande maneja bien lotes de 50. El chico (fallback) pierde
-// precision con listas largas: con lotes de 50 tradujo "banana bunch" como
-// "manzana en racimo". Con lotes chicos acierta mucho mas, y en una app de CAA
-// una etiqueta mal traducida es peor que una en ingles: el pictograma se usa
-// para comunicar.
+// Modelo principal y de respaldo. Cuando se agota el cupo diario del
+// principal, reintentar no sirve hasta el reset, asi que se cambia a otro
+// modelo con cuota independiente.
+const PRIMARY_MODEL = 'openai/gpt-oss-20b';
+const FALLBACK_MODEL = 'openai/gpt-oss-120b';
+// El principal maneja bien lotes de 50. El fallback usa lotes chicos para
+// priorizar precision sobre velocidad: una etiqueta mal traducida es peor que
+// una en ingles porque el pictograma se usa para comunicar.
 const BATCH_SIZE_PRIMARY = 50;
 const BATCH_SIZE_FALLBACK = 15;
 // Groq free tier limita por requests y por tokens por minuto. Una pausa corta

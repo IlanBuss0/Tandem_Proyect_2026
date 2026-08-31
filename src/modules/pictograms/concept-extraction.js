@@ -11,8 +11,8 @@ import { envConfig } from '../../configs/env.config.js';
 // patron ya probado en produccion para este mismo tipo de llamada.
 
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const PRIMARY_MODEL = 'llama-3.3-70b-versatile';
-const FALLBACK_MODEL = 'llama-3.1-8b-instant';
+const PRIMARY_MODEL = 'openai/gpt-oss-20b';
+const FALLBACK_MODEL = 'openai/gpt-oss-120b';
 // Lotes mas chicos que la traduccion de catalogo: cada frase pide HASTA 3
 // conceptos (no 1 traduccion), asi que el mismo lote genera ~3x mas tokens
 // de salida.

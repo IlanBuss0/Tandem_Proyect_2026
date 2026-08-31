@@ -3,7 +3,7 @@ import { envConfig } from '../configs/env.config.js';
 import AppError from '../modules/errors/AppError.js';
 
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL_NAME = 'llama-3.3-70b-versatile';
+const MODEL_NAME = 'openai/gpt-oss-20b';
 
 const PATIENT_SUMMARY_SYSTEM_PROMPT = `Sos un asistente que ayuda a profesionales (psicologos, terapeutas) a redactar resumenes de progreso para las familias/tutores de pacientes con TEA (Trastorno del Espectro Autista). Tu resumen va a ser leido directamente por un padre/madre/tutor, NO por otro profesional.
 
