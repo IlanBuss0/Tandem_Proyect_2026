@@ -11,7 +11,7 @@ import { envConfig } from '../../configs/env.config.js';
 // inventadas aca): oraciones cortas, una idea por oracion, vocabulario
 // simple, voz activa, sin dobles negaciones ni metaforas.
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+const MODEL = 'openai/gpt-oss-20b';
 export const MAX_LECTURA_FACIL_CHARS = 2000;
 
 const SYSTEM_PROMPT = `Reescribis un texto en espanol rioplatense en formato de LECTURA FACIL, para que lo entienda alguien con dificultad de comprension lectora (por ejemplo, una persona con autismo o discapacidad intelectual).

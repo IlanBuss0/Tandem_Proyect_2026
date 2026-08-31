@@ -173,7 +173,7 @@ test('pictogramizeAsync: una sola llamada de extraccion para todas las frases de
   let calls = 0;
   service.extractConceptsAsync = async (texts) => {
     calls += 1;
-    return { concepts: texts.map((t) => [t.toLowerCase()]), usedGroq: true, degraded: false, model: 'llama-3.3-70b-versatile' };
+    return { concepts: texts.map((t) => [t.toLowerCase()]), usedGroq: true, degraded: false, model: 'openai/gpt-oss-20b' };
   };
   service.PictogramaService.searchAsync = buildCatalog({});
 
