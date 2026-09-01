@@ -1,5 +1,5 @@
-import axios from 'axios';
 import { envConfig } from '../../configs/env.config.js';
+import { groqProvider } from '../../providers/ai/aiProviders.js';
 
 // Unica responsabilidad: simplificar un texto a "lectura facil" (Sesion
 // 18, item 15 "explicame esto"). Un solo llamado a Groq, sin batching —
@@ -10,7 +10,6 @@ import { envConfig } from '../../configs/env.config.js';
 // Reglas de lectura facil (estandar de accesibilidad cognitiva, no
 // inventadas aca): oraciones cortas, una idea por oracion, vocabulario
 // simple, voz activa, sin dobles negaciones ni metaforas.
-const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL = 'openai/gpt-oss-20b';
 export const MAX_LECTURA_FACIL_CHARS = 2000;
 
@@ -39,17 +38,15 @@ export async function simplifyToLecturaFacilAsync(text) {
   }
 
   try {
-    const response = await axios.post(GROQ_CHAT_URL, {
+    const response = await groqProvider.chatCompletion({
       model: MODEL,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: trimmed.slice(0, MAX_LECTURA_FACIL_CHARS) },
       ],
       temperature: 0.2,
-      response_format: { type: 'json_object' },
-    }, {
-      headers: { Authorization: `Bearer ${envConfig.groqApiKey}`, 'Content-Type': 'application/json' },
-      timeout: 30000,
+      responseFormat: { type: 'json_object' },
+      timeoutMs: 30000,
     });
 
     const raw = response?.data?.choices?.[0]?.message?.content?.trim() || '';

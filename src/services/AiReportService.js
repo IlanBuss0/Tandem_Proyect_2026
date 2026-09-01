@@ -1,8 +1,7 @@
-import axios from 'axios';
 import { envConfig } from '../configs/env.config.js';
 import AppError from '../modules/errors/AppError.js';
+import { groqProvider } from '../providers/ai/aiProviders.js';
 
-const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL_NAME = 'openai/gpt-oss-20b';
 
 const PATIENT_SUMMARY_SYSTEM_PROMPT = `Sos un asistente que ayuda a profesionales (psicologos, terapeutas) a redactar resumenes de progreso para las familias/tutores de pacientes con TEA (Trastorno del Espectro Autista). Tu resumen va a ser leido directamente por un padre/madre/tutor, NO por otro profesional.
@@ -46,6 +45,14 @@ function formatSesionesList(sesiones) {
     .join('\n');
 }
 
+function getTechnicalErrorDetails(error) {
+  return {
+    timestamp: new Date().toISOString(),
+    status: error?.response?.status || error?.statusCode || error?.cause?.response?.status || 'sin estado',
+    code: error?.code || error?.cause?.code || error?.name || 'Error',
+  };
+}
+
 export default class AiReportService {
   constructor() {
     console.log('Estoy en: AiReportService.constructor()');
@@ -61,16 +68,14 @@ export default class AiReportService {
   generateContentSafe = async (systemPrompt, userPrompt) => {
     this.assertConfigured();
     try {
-      const response = await axios.post(GROQ_CHAT_URL, {
+      const response = await groqProvider.chatCompletion({
         model: MODEL_NAME,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
         temperature: 0.7,
-      }, {
-        headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
-        timeout: 30000,
+        timeoutMs: 30000,
       });
       const text = response?.data?.choices?.[0]?.message?.content;
       if (!text || !text.trim()) {
@@ -79,9 +84,8 @@ export default class AiReportService {
       return text.trim();
     } catch (error) {
       // Nunca logueamos el prompt (puede contener texto de notas de sesion) —
-      // solo el mensaje de error del proveedor.
-      const providerMessage = error?.response?.data?.error?.message || error.message;
-      console.error('[AiReportService] Error generando contenido:', providerMessage);
+      // solo detalles tecnicos no sensibles.
+      console.error('[AiReportService] Error generando contenido:', getTechnicalErrorDetails(error));
       throw new AppError('No se pudo generar el resumen con IA. Intenta de nuevo en unos minutos.', 502);
     }
   };
@@ -92,7 +96,7 @@ export default class AiReportService {
    * metadata de sesiones, nunca con contenido de notas.
    */
   generatePatientSummaryAsync = async ({ pacienteNombre, nivelApoyoNombre, sesiones, notasTexto = null }) => {
-    console.log(`AiReportService.generatePatientSummaryAsync(paciente=${pacienteNombre}, sesiones=${sesiones?.length ?? 0}, notas=${notasTexto?.length ?? 0})`);
+    console.log(`AiReportService.generatePatientSummaryAsync(sesiones=${sesiones?.length ?? 0}, notas=${notasTexto?.length ?? 0})`);
 
     const lines = [
       `Paciente: ${pacienteNombre}`,
@@ -118,7 +122,7 @@ export default class AiReportService {
   };
 
   generateCaseloadOverviewAsync = async ({ profesionalNombre, mes, anio, resumenPorPaciente }) => {
-    console.log(`AiReportService.generateCaseloadOverviewAsync(profesional=${profesionalNombre}, pacientes=${resumenPorPaciente?.length ?? 0})`);
+    console.log(`AiReportService.generateCaseloadOverviewAsync(pacientes=${resumenPorPaciente?.length ?? 0})`);
 
     const statsLines = resumenPorPaciente.map((p) =>
       `- ${p.pacienteNombre}: ${p.totalSesiones} sesiones (${p.completadas} completadas, ${p.canceladas} canceladas, ${p.ausentes} ausencias) — asistencia ${p.asistenciaPct}%`,
@@ -137,7 +141,7 @@ export default class AiReportService {
 
   /** Nunca se persiste — se genera, se muestra, se descarta. */
   generateSessionPrepAsync = async ({ pacienteNombre, nivelApoyoNombre, sesionObjetivo, sesionesPasadas, notasTexto }) => {
-    console.log(`AiReportService.generateSessionPrepAsync(paciente=${pacienteNombre}, sesionesPasadas=${sesionesPasadas?.length ?? 0}, notas=${notasTexto?.length ?? 0})`);
+    console.log(`AiReportService.generateSessionPrepAsync(sesionesPasadas=${sesionesPasadas?.length ?? 0}, notas=${notasTexto?.length ?? 0})`);
 
     const lines = [
       `Paciente: ${pacienteNombre}`,
@@ -161,7 +165,7 @@ export default class AiReportService {
 
   /** Nunca se persiste — pregunta y respuesta son puntuales, no quedan guardadas. */
   answerPatientQuestionAsync = async ({ pacienteNombre, nivelApoyoNombre, pregunta, sesionesPasadas, notasTexto }) => {
-    console.log(`AiReportService.answerPatientQuestionAsync(paciente=${pacienteNombre}, sesionesPasadas=${sesionesPasadas?.length ?? 0}, notas=${notasTexto?.length ?? 0})`);
+    console.log(`AiReportService.answerPatientQuestionAsync(sesionesPasadas=${sesionesPasadas?.length ?? 0}, notas=${notasTexto?.length ?? 0})`);
 
     const lines = [
       `Paciente: ${pacienteNombre}`,
