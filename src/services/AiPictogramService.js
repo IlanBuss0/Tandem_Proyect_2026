@@ -7,14 +7,12 @@ import FileStorageService from './FileStorageService.js';
 import AuthorizationService from './AuthorizationService.js';
 import StylePreferenceStore from '../modules/pictograms/style-preference.js';
 import AppError from '../modules/errors/AppError.js';
+import { envConfig } from '../configs/env.config.js';
+import { falImageProvider, pollinationsImageProvider } from '../providers/ai/aiProviders.js';
 
 const QUICK_MODEL = 'fal-ai/flux/schnell';
 const FINAL_MODEL = 'fal-ai/flux-2-pro';
 const FINAL_EDIT_MODEL = 'fal-ai/flux-2-pro/edit';
-const POLLINATIONS_IMAGE_MODELS = (process.env.POLLINATIONS_IMAGE_MODELS || 'turbo,flux')
-  .split(',')
-  .map((item) => item.trim())
-  .filter(Boolean);
 const ALLOWED_CATEGORIES = new Set([
   'acciones y rutinas', 'actividades', 'casa', 'comida', 'comunicacion',
   'compras y dinero', 'conceptos', 'emociones', 'escuela y aprendizaje',
@@ -55,6 +53,14 @@ function getProviderError(error) {
   return { status, message };
 }
 
+function getTechnicalErrorDetails(error) {
+  return {
+    timestamp: new Date().toISOString(),
+    status: error?.response?.status || error?.statusCode || error?.cause?.response?.status || 'sin estado',
+    code: error?.code || error?.cause?.code || error?.name || 'Error',
+  };
+}
+
 function splitStoredList(value) {
   return String(value || '')
     .split('\n')
@@ -64,13 +70,6 @@ function splitStoredList(value) {
 
 function joinStoredList(items) {
   return Array.from(new Set((items || []).filter(Boolean))).join('\n') || null;
-}
-
-function isRetryablePollinationsError(error) {
-  const providerError = getProviderError(error);
-  return !providerError.status
-    || providerError.status >= 500
-    || /queue\s*full|timeout|timed?\s*out|network|socket|econn/i.test(providerError.message || '');
 }
 
 // Sesion 25 (perfil de memoria), arreglo de consistencia: el motor de
@@ -110,13 +109,6 @@ export function buildPrompt(name, description, revisionInstructions = '', prefer
   return parts.join(' ');
 }
 
-function buildCompactPrompt(prompt) {
-  return cleanText(prompt, 650)
-    .replace(/\baugmentative and alternative communication\b/gi, 'AAC')
-    .replace(/\btransparent-looking\b/gi, 'plain')
-    .replace(/\s+/g, ' ');
-}
-
 function keywordSymbol(text) {
   const normalized = String(text || '').toLowerCase();
   if (/(viaje|avion|aeropuerto|volar|salir)/.test(normalized)) return { icon: 'M512 170 132 395l55 45 136-42 76 79-85 119 53 41 128-94 139 145 62-47-76-176 141-103 92 22 43-51-385-163Z', color: '#2f80ed' };
@@ -144,6 +136,8 @@ export default class AiPictogramService {
     this.pictograms = new PictogramaRepository();
     this.storage = new FileStorageService();
     this.StylePreferenceStore = new StylePreferenceStore();
+    this.falImageProvider = falImageProvider;
+    this.pollinationsImageProvider = pollinationsImageProvider;
   }
 
   ensureSchemaAsync = async () => {
@@ -218,85 +212,15 @@ export default class AiPictogramService {
   };
 
   callPollinationsAsync = async ({ prompt, referenceUrls = [] }) => {
-    const prompts = Array.from(new Set([buildCompactPrompt(prompt), prompt].filter(Boolean)));
-    const referenceUrl = referenceUrls.find(Boolean);
-
-    let lastError = null;
-    for (const currentPrompt of prompts) {
-      for (const model of POLLINATIONS_IMAGE_MODELS) {
-        const params = new URLSearchParams({
-          width: '1024',
-          height: '1024',
-          model,
-          private: 'true',
-          enhance: 'true',
-          seed: String(Math.floor(Math.random() * 1_000_000_000)),
-        });
-        if (referenceUrl) params.set('image', referenceUrl);
-
-        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(currentPrompt)}?${params.toString()}`;
-        for (let attempt = 1; attempt <= 2; attempt += 1) {
-        try {
-          const response = await axios.get(url, {
-            responseType: 'arraybuffer',
-            timeout: Number.parseInt(process.env.POLLINATIONS_TIMEOUT_MS || '90000', 10),
-            headers: { Accept: 'image/png,image/jpeg,image/webp,*/*' },
-          });
-          const contentType = String(response.headers?.['content-type'] || '');
-          if (contentType.includes('application/json')) {
-            throw Object.assign(new Error(Buffer.from(response.data).toString('utf8')), { response });
-          }
-          return Buffer.from(response.data);
-        } catch (error) {
-          lastError = error;
-          const providerError = getProviderError(error);
-          console.warn(`Pollinations ${model} attempt ${attempt} failed:`, providerError.message);
-          if (!isRetryablePollinationsError(error)) break;
-        }
-        }
-      }
-    }
-
-    const providerError = getProviderError(lastError);
-    throw new AppError(`Pollinations AI no pudo generar la imagen (${providerError.status || 'sin estado'}): ${providerError.message}`, 502);
+    return await this.pollinationsImageProvider.generateImage({ prompt, referenceUrls });
   };
 
   callFalAsync = async ({ model, prompt, referenceUrls = [] }) => {
-    if (!process.env.FAL_KEY) throw new AppError('La generacion IA no esta configurada.', 503);
-    const endpoint = `https://fal.run/${model}`;
-    const imageUrls = referenceUrls.filter(Boolean);
-    const input = {
-      prompt,
-      image_size: 'square_hd',
-      num_images: 1,
-      output_format: 'png',
-      enable_safety_checker: true,
-      safety_tolerance: '1',
-      ...(imageUrls.length > 0 ? { image_urls: imageUrls } : {}),
-    };
-    let response;
-    try {
-      response = await axios.post(endpoint, input, {
-        headers: { Authorization: `Key ${process.env.FAL_KEY}`, 'Content-Type': 'application/json' },
-        timeout: Number.parseInt(process.env.FAL_REQUEST_TIMEOUT_MS || '120000', 10),
-      });
-    } catch (error) {
-      const providerError = getProviderError(error);
-      if (providerError.status === 401 || providerError.status === 403) {
-        throw new AppError(`fal.ai rechazo la solicitud (${providerError.status}). Se intentara el proveedor gratuito.`, 502);
-      }
-      throw new AppError(`fal.ai no pudo generar la imagen (${providerError.status || 'sin estado'}): ${providerError.message}`, 502);
-    }
-    if (response.data?.has_nsfw_concepts?.some(Boolean)) {
-      throw new AppError('La imagen fue bloqueada por el control de seguridad.', 422);
-    }
-    const image = response.data?.images?.[0];
-    if (!image?.url) throw new Error('fal.ai no devolvio una imagen.');
-    return { image, requestId: response.headers?.['x-fal-request-id'] || null, seed: response.data?.seed ?? null };
+    return await this.falImageProvider.generateImage({ model, prompt, referenceUrls });
   };
 
   createImageBufferAsync = async ({ model, prompt, referenceUrls, name, description }) => {
-    const hasFalKey = process.env.FAL_KEY && process.env.FAL_KEY !== 'replace-with-fal-api-key';
+    const hasFalKey = envConfig.falKey && envConfig.falKey !== 'replace-with-fal-api-key';
     let providerRequestId = null;
     let seed = null;
     let imageBuffer;
@@ -309,12 +233,12 @@ export default class AiPictogramService {
         providerRequestId = result.requestId;
         seed = result.seed;
       } catch (falError) {
-        console.warn('Fal AI failed. Falling back to Pollinations AI...', falError.message || falError);
+        console.warn('Fal AI failed. Falling back to Pollinations AI...', getTechnicalErrorDetails(falError));
         try {
           const rawBuffer = await this.callPollinationsAsync({ prompt, referenceUrls });
           imageBuffer = await sharp(rawBuffer).resize(1024, 1024, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer();
         } catch (pollinationsError) {
-          console.warn('Pollinations failed. Falling back to local pictogram...', pollinationsError.message || pollinationsError);
+          console.warn('Pollinations failed. Falling back to local pictogram...', getTechnicalErrorDetails(pollinationsError));
           imageBuffer = await createLocalPictogramBuffer({ name, description });
         }
       }
@@ -323,7 +247,7 @@ export default class AiPictogramService {
         const rawBuffer = await this.callPollinationsAsync({ prompt, referenceUrls });
         imageBuffer = await sharp(rawBuffer).resize(1024, 1024, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer();
       } catch (pollinationsError) {
-        console.warn('Pollinations failed. Falling back to local pictogram...', pollinationsError.message || pollinationsError);
+        console.warn('Pollinations failed. Falling back to local pictogram...', getTechnicalErrorDetails(pollinationsError));
         imageBuffer = await createLocalPictogramBuffer({ name, description });
       }
     }
@@ -346,7 +270,7 @@ export default class AiPictogramService {
     const target = targets.find((item) => Number(item.id) === targetPertenecienteId);
     if (!target) throw new AppError('No tenes un vinculo activo con el perteneciente seleccionado.', 403);
 
-    const hasFalKey = process.env.FAL_KEY && process.env.FAL_KEY !== 'replace-with-fal-api-key';
+    const hasFalKey = envConfig.falKey && envConfig.falKey !== 'replace-with-fal-api-key';
     const id = crypto.randomUUID();
     const reference = await this.prepareReferenceAsync({
       file, referencePictogramId: body.referencePictogramId, userId, generationId: id,
@@ -435,7 +359,7 @@ export default class AiPictogramService {
     ].filter(Boolean)));
     const referenceUrls = Array.from(new Set([generation.previewUrl, ...persistentReferenceUrls].filter(Boolean)));
 
-    const hasFalKey = process.env.FAL_KEY && process.env.FAL_KEY !== 'replace-with-fal-api-key';
+    const hasFalKey = envConfig.falKey && envConfig.falKey !== 'replace-with-fal-api-key';
     const model = hasFalKey ? FINAL_EDIT_MODEL : 'pollinations-flux';
     const targets = await this.getTargetsAsync(userId);
     const target = targets.find((item) => Number(item.id) === Number(generation.targetPertenecienteId));

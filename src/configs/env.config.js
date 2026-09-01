@@ -17,6 +17,11 @@ function isExpiresIn(value) {
   return /^\d+[smhd]$/i.test(String(value || '').trim());
 }
 
+function parsePositiveInt(value, fallback) {
+  const parsed = Number.parseInt(value || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export const envConfig = {
   port: process.env.PORT || 3000,
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -38,9 +43,13 @@ export const envConfig = {
   notificationWorkerConcurrency: Number.parseInt(process.env.NOTIFICATION_WORKER_CONCURRENCY || '5', 10),
   startNotificationWorker: process.env.START_NOTIFICATION_WORKER !== 'false',
   falKey: process.env.FAL_KEY || null,
-  falRequestTimeoutMs: Number.parseInt(process.env.FAL_REQUEST_TIMEOUT_MS || '120000', 10),
+  falRequestTimeoutMs: parsePositiveInt(process.env.FAL_REQUEST_TIMEOUT_MS, 120000),
   geminiApiKey: process.env.GEMINI_API_KEY || null,
   groqApiKey: process.env.GROQ_API_KEY || null,
+  pollinationsImageModels: parseCsv(process.env.POLLINATIONS_IMAGE_MODELS || 'turbo,flux'),
+  pollinationsTimeoutMs: parsePositiveInt(process.env.POLLINATIONS_TIMEOUT_MS, 90000),
+  aiCircuitBreakerFailureThreshold: parsePositiveInt(process.env.AI_CB_FAILURE_THRESHOLD, 5),
+  aiCircuitBreakerOpenTimeoutMs: parsePositiveInt(process.env.AI_CB_OPEN_TIMEOUT_MS, 30000),
   googleClientId: process.env.GOOGLE_CLIENT_ID || null,
   resendApiKey: process.env.RESEND_API_KEY || null,
   resendFromEmail: process.env.RESEND_FROM_EMAIL || 'Tandem <onboarding@resend.dev>',

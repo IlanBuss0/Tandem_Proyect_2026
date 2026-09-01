@@ -1,5 +1,5 @@
-import axios from 'axios';
 import { envConfig } from '../../configs/env.config.js';
+import { groqProvider } from '../../providers/ai/aiProviders.js';
 
 // Unica responsabilidad de este modulo: convertir frases en conceptos
 // buscables ("Lavarse los dientes" -> ["lavarse los dientes", "cepillarse
@@ -10,7 +10,6 @@ import { envConfig } from '../../configs/env.config.js';
 // por count mismatch) esta calcado de PictogramTranslationService.js: es el
 // patron ya probado en produccion para este mismo tipo de llamada.
 
-const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const PRIMARY_MODEL = 'openai/gpt-oss-20b';
 const FALLBACK_MODEL = 'openai/gpt-oss-120b';
 // Lotes mas chicos que la traduccion de catalogo: cada frase pide HASTA 3
@@ -71,17 +70,15 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function callGroqBatch(phrases, { model, attempt = 1, primaryModelExhaustedRef }) {
   const activeModel = model ?? (primaryModelExhaustedRef.value ? FALLBACK_MODEL : PRIMARY_MODEL);
   try {
-    const response = await axios.post(GROQ_CHAT_URL, {
+    const response = await groqProvider.chatCompletion({
       model: activeModel,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: JSON.stringify(phrases) },
       ],
       temperature: 0.1,
-      response_format: { type: 'json_object' },
-    }, {
-      headers: { Authorization: `Bearer ${envConfig.groqApiKey}`, 'Content-Type': 'application/json' },
-      timeout: 60000,
+      responseFormat: { type: 'json_object' },
+      timeoutMs: 60000,
     });
 
     const text = response?.data?.choices?.[0]?.message?.content?.trim() || '';
