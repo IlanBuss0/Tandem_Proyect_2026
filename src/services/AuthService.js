@@ -21,6 +21,7 @@ import {
 } from '../modules/security/refresh-token.helper.js';
 import { envConfig } from '../configs/env.config.js';
 import ValidacionProfesionalServiceClass from './ValidacionProfesionalService.js';
+import { VERIFICATION_STATUS } from '../modules/professional-verification/verification.constants.js';
 
 const UsuarioService = new UsuarioServiceClass();
 const PertenecienteService = new PertenecienteServiceClass();
@@ -130,7 +131,7 @@ class AuthService {
     const user = await AuthRepository.findSafeById(newId);
     let professionalVerification;
     if (idTipoUsuario === ROLES_REGISTRABLES.profesional) {
-      professionalVerification = await ValidacionProfesionalService.verifyRegistrationAsync({
+      professionalVerification = await this._verifyProfessionalRegistrationSafely({
         idUsuario: newId,
         imageBuffer: dniFrente.buffer,
         declaredIdentity: { nombre, apellido },
@@ -315,9 +316,15 @@ class AuthService {
     return { correo: updated.correo, email_verificado: updated.email_verificado };
   }
 
-  async loginWithGoogle(accessToken, rol, data = {}) {
-    if (!envConfig.googleClientId) throw new AppError('El login con Google no esta configurado en el servidor.', 503);
+  async loginWithGoogle(accessToken, rol, data = {}, dniFrente = null) {
     if (!accessToken) throw new AppError('accessToken es obligatorio.', 400);
+
+    const requestedRole = String(rol || '').trim().toLowerCase();
+    if (requestedRole === 'profesional' && !dniFrente?.buffer) {
+      throw new AppError('La fotografia del frente del DNI es obligatoria para profesionales.', 400);
+    }
+
+    if (!envConfig.googleClientId) throw new AppError('El login con Google no esta configurado en el servidor.', 503);
 
     let payload;
     try {
@@ -344,7 +351,7 @@ class AuthService {
       return this.createSession(existing);
     }
 
-    const rolNormalizado = String(rol || '').trim().toLowerCase();
+    const rolNormalizado = requestedRole;
     const idTipoUsuario = ROLES_REGISTRABLES[rolNormalizado];
 
     if (!idTipoUsuario) {
@@ -387,8 +394,33 @@ class AuthService {
     await AuthRepository.markEmailVerified(newId);
 
     const user = await AuthRepository.findSafeById(newId);
-    return this.createSession(user);
+    let professionalVerification;
+    if (idTipoUsuario === ROLES_REGISTRABLES.profesional) {
+      professionalVerification = await this._verifyProfessionalRegistrationSafely({
+        idUsuario: newId,
+        imageBuffer: dniFrente.buffer,
+        declaredIdentity: {
+          nombre: payload.given_name || payload.name || 'Usuario',
+          apellido: payload.family_name || '',
+        },
+      });
+    }
+    const session = await this.createSession(user);
+    return professionalVerification ? { ...session, professionalVerification } : session;
   }
+
+  _verifyProfessionalRegistrationSafely = async ({ idUsuario, imageBuffer, declaredIdentity }) => {
+    try {
+      return await ValidacionProfesionalService.verifyRegistrationAsync({ idUsuario, imageBuffer, declaredIdentity });
+    } catch (error) {
+      console.error('[ProfessionalVerification] automated verification persistence failed:', error.message);
+      return {
+        status: VERIFICATION_STATUS.VERIFICATION_ERROR,
+        reviewStatus: VERIFICATION_STATUS.MANUAL_REVIEW,
+        messageCode: 'PROFESSIONAL_VERIFICATION_PENDING',
+      };
+    }
+  };
 
   _generateUsernameFromEmail = async (email) => {
     const base = String(email).split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase().slice(0, 20) || 'usuario';

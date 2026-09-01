@@ -10,10 +10,10 @@ import BD from '../src/db/BD.js';
       for (const [name, order] of states) {
         await client.query(`
           INSERT INTO estados_validaciones_profesionales (nombre, orden)
-          SELECT $1, $2
+          SELECT $1::varchar, $2::integer
           WHERE NOT EXISTS (
             SELECT 1 FROM estados_validaciones_profesionales
-            WHERE UPPER(REPLACE(nombre, ' ', '_')) = $1
+            WHERE UPPER(REPLACE(nombre, ' ', '_')) = $1::varchar
           )
         `, [name, order]);
       }

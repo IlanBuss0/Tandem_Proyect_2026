@@ -8,6 +8,7 @@ import {
   PROFESIONAL_DEFAULTS,
   PROFESIONAL_PERMISSIONS,
 } from '../modules/security/permissions.constants.js';
+import { isVerifiedProfessionalStatus } from '../modules/professional-verification/professional-status.js';
 
 class AuthorizationService {
   async getUserContext(idUsuario) {
@@ -520,7 +521,7 @@ class AuthorizationService {
     const estadoVinculo = String(vinculo.estado_vinculo ?? '').toLowerCase();
     const estadoValidacion = String(vinculo.estado_validacion_profesional ?? '').toLowerCase();
     const vinculoActivo = ['activo', 'activa', 'aprobado', 'aprobada', 'aceptado', 'aceptada'].includes(estadoVinculo);
-    const profesionalValidado = ['validado', 'validada', 'aprobado', 'aprobada'].includes(estadoValidacion);
+    const profesionalValidado = isVerifiedProfessionalStatus(estadoValidacion);
     const aprobadoPorTutor = !vinculo.requiere_aprobacion_tutor || (vinculo.fue_aprobado_por_tutor && vinculo.id_tutor_aprobador);
 
     return Boolean(

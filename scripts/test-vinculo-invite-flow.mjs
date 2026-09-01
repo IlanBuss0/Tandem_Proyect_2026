@@ -46,7 +46,7 @@ async function getFixture() {
         AND up.activo = true
         AND uprof.activo = true
         AND LOWER(ev.nombre) IN ('activo', 'activa', 'aprobado', 'aprobada', 'aceptado', 'aceptada')
-        AND LOWER(COALESCE(evp.nombre, '')) IN ('validado', 'validada', 'aprobado', 'aprobada')
+        AND LOWER(COALESCE(evp.nombre, '')) IN ('verified', 'validado', 'validada', 'aprobado', 'aprobada', 'verificado', 'verificada')
         AND NOT EXISTS (
           SELECT 1
           FROM vinculos_profesional_pertenecientes vpp

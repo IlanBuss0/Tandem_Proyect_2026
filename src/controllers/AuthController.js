@@ -121,10 +121,13 @@ router.post('/logout', async (req, res, next) => {
 
 router.get('/me', authMiddleware, async (req, res, next) => { try { res.status(200).json({ ok: true, data: await AuthService.me(req) }); } catch (e) { next(e); } });
 
-router.post('/google', async (req, res, next) => {
+router.post('/google', uploadDniFrente.single('dni_frente'), async (req, res, next) => {
   try {
+    if (req.file && !validateMagicBytes(req.file.buffer, req.file.mimetype)) {
+      throw new AppError('El archivo del DNI no coincide con el formato declarado.', 400);
+    }
     const { accessToken, rol, ...roleData } = req.body || {};
-    sendSession(res, 200, await AuthService.loginWithGoogle(accessToken, rol, roleData));
+    sendSession(res, 200, await AuthService.loginWithGoogle(accessToken, rol, roleData, req.file));
   } catch (e) {
     next(e);
   }

@@ -37,7 +37,8 @@ export default class RefepsPublicProvider {
   async request(numeroMatricula) {
     const getResponse = await this.http.get(this.url, { timeout: this.timeout, validateStatus: status => status === 200 });
     const $ = cheerio.load(getResponse.data);
-    const formBuildId = $('#consulta-profesionales-form input[name="form_build_id"]').val();
+    const formBuildId = $('#consulta-profesionales-form input[name="form_build_id"]').val()
+      || $('input[name="form_build_id"]').val();
     if (!formBuildId) throw new RefepsProviderError('Estructura inicial inesperada', 'STRUCTURE_MISMATCH');
 
     const cookie = (getResponse.headers?.['set-cookie'] || []).map(value => value.split(';')[0]).join('; ');
@@ -64,12 +65,14 @@ export default class RefepsPublicProvider {
       throw new RefepsProviderError('Estructura de resultados inesperada', 'STRUCTURE_MISMATCH');
     }
 
-    const json = script.match(/Drupal\.settings\.refepsProfesionales\.allItems\s*=\s*(\[[\s\S]*?\]);/)?.[1];
+    const json = this.extractAllItemsJson(script);
     if (!json) throw new RefepsProviderError('JSON de resultados ausente', 'STRUCTURE_MISMATCH');
 
     let items;
     try { items = JSON.parse(json); } catch { throw new RefepsProviderError('JSON de resultados invalido', 'STRUCTURE_MISMATCH'); }
     const target = String(numeroMatricula).trim();
+    if (!Array.isArray(items)) throw new RefepsProviderError('JSON de resultados invalido', 'STRUCTURE_MISMATCH');
+
     const results = items.flatMap(item => (item.profesiones || []).flatMap(profesion =>
       (profesion.matriculas || []).filter(record => String(record.matricula).trim() === target).map(record => ({
         nombre: item.nombre || null,
@@ -83,5 +86,45 @@ export default class RefepsPublicProvider {
         especialidades: profesion.refepsEspecialidad ? [profesion.refepsEspecialidad] : [],
       }))));
     return { found: results.length > 0, ambiguous: results.length > 1, results };
+  }
+
+  extractAllItemsJson(script) {
+    const marker = 'Drupal.settings.refepsProfesionales.allItems';
+    const markerIndex = script.indexOf(marker);
+    if (markerIndex < 0) return null;
+
+    const equalsIndex = script.indexOf('=', markerIndex);
+    const arrayStart = script.indexOf('[', equalsIndex);
+    if (equalsIndex < 0 || arrayStart < 0) return null;
+
+    let depth = 0;
+    let inString = false;
+    let quote = null;
+    let escaped = false;
+    for (let index = arrayStart; index < script.length; index += 1) {
+      const char = script[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === '\\') {
+          escaped = true;
+        } else if (char === quote) {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"' || char === "'") {
+        inString = true;
+        quote = char;
+        continue;
+      }
+      if (char === '[') depth += 1;
+      if (char === ']') {
+        depth -= 1;
+        if (depth === 0) return script.slice(arrayStart, index + 1);
+      }
+    }
+    return null;
   }
 }
