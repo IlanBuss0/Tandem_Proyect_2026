@@ -5,8 +5,12 @@
   "license": "ISC",
   "author": "Ilan Busso",
   "type": "module",
-  "main": "index.js",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
+    "start": "node src/server.js",
     "server": "cls && node --watch src/server.js",
     "worker:notifications": "node src/workers/notification.worker.js",
     "test:chat-flow": "node scripts/test-chat-flow.mjs",
