@@ -8,8 +8,12 @@ const refepsProvider = new RefepsPublicProvider();
 router.post('/search-refeps', async (req, res) => {
   try {
     const matricula = String(req.body?.matricula || '').trim();
-    if (!matricula) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ ok: false, error: 'matricula es obligatoria.' });
+    if (!/^\d{4,}$/.test(matricula)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        ok: false,
+        error: 'La matricula debe tener al menos 4 digitos y solo numeros.',
+        code: 'INVALID_LICENSE',
+      });
     }
 
     const result = await refepsProvider.buscarPorMatricula(matricula);

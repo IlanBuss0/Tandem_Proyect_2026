@@ -101,6 +101,14 @@ class AuthService {
       throw new AppError('La fotografia del frente del DNI es obligatoria para profesionales.', 400);
     }
 
+    if (idTipoUsuario === ROLES_REGISTRABLES.profesional) {
+      await this._assertProfessionalDniVerified({
+        imageBuffer: dniFrente.buffer,
+        matricula: data?.matricula,
+        declaredIdentity: { nombre, apellido },
+      });
+    }
+
     // Whitelist estricta: nunca se aceptan contrasena_hash, activo, ni
     // id_tipo_usuario crudo desde el body (ver comentario de ROLES_REGISTRABLES).
     const entity = {
@@ -364,6 +372,17 @@ class AuthService {
       throw new AppError('profesion y matricula son obligatorios para registrarte como profesional.', 400);
     }
 
+    if (idTipoUsuario === ROLES_REGISTRABLES.profesional) {
+      await this._assertProfessionalDniVerified({
+        imageBuffer: dniFrente.buffer,
+        matricula: data?.matricula,
+        declaredIdentity: {
+          nombre: payload.given_name || payload.name || 'Usuario',
+          apellido: payload.family_name || '',
+        },
+      });
+    }
+
     const nombreUsuario = await this._generateUsernameFromEmail(payload.email);
     // Password inutilizable: esta cuenta solo entra por Google. Se genera
     // igual porque contrasena_hash es NOT NULL en la tabla.
@@ -420,6 +439,33 @@ class AuthService {
         messageCode: 'PROFESSIONAL_VERIFICATION_PENDING',
       };
     }
+  };
+
+  verifyProfessionalDniForRegistration = async (data, dniFrente = null) => {
+    if (!dniFrente?.buffer) {
+      throw new AppError('La fotografia del frente del DNI es obligatoria para profesionales.', 400);
+    }
+
+    return ValidacionProfesionalService.verifyIdentityDataAsync({
+      imageBuffer: dniFrente.buffer,
+      matricula: data?.matricula,
+      declaredIdentity: {
+        nombre: data?.nombre,
+        apellido: data?.apellido,
+      },
+    });
+  };
+
+  _assertProfessionalDniVerified = async ({ imageBuffer, matricula, declaredIdentity }) => {
+    const result = await ValidacionProfesionalService.verifyIdentityDataAsync({ imageBuffer, matricula, declaredIdentity });
+    if (result.status === VERIFICATION_STATUS.VERIFIED) return result;
+
+    const message = result.status === VERIFICATION_STATUS.DATA_MISMATCH
+      ? 'Los datos del DNI no coinciden con el registro profesional seleccionado.'
+      : result.reason === 'NOT_ARGENTINE_DNI' || result.reason === 'MISSING_FIELDS'
+        ? 'No pudimos reconocer un DNI argentino valido en esta imagen.'
+        : 'No pudimos verificar el DNI profesional. Intenta nuevamente.';
+    throw new AppError(message, 422, result.status);
   };
 
   _generateUsernameFromEmail = async (email) => {

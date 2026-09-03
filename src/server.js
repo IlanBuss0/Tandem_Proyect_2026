@@ -163,6 +163,7 @@ app.get('/docs', (req, res) => {
 app.use('/api/auth/login', authRateLimiter);
 app.use('/api/auth/register', authRateLimiter);
 app.use('/api/auth/google', authRateLimiter);
+app.use('/api/auth/verify-professional-dni', authRateLimiter);
 app.use('/api/auth/refresh', refreshRateLimiter);
 app.use('/api/auth/resend-verification', resendVerificationRateLimiter);
 app.use('/api/auth/forgot-password', resendVerificationRateLimiter);

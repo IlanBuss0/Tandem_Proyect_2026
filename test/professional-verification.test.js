@@ -6,6 +6,7 @@ import { normalizeDocument, normalizeIdentityText, namesMatch } from '../src/mod
 import DniExtractionService from '../src/services/DniExtractionService.js';
 import ProfessionalIdentityMatcher from '../src/services/ProfessionalIdentityMatcher.js';
 import RefepsPublicProvider, { RefepsProviderError } from '../src/providers/professional-verification/RefepsPublicProvider.js';
+import ValidacionProfesionalServiceClass from '../src/services/ValidacionProfesionalService.js';
 import AuthService from '../src/services/AuthService.js';
 import AuthorizationService from '../src/services/AuthorizationService.js';
 
@@ -109,10 +110,24 @@ test('DNI OCR parseText extrae formato argentino bilingue', () => {
 
 test('DNI OCR parseText maneja ruido y etiquetas en una linea', () => {
   const service = new DniExtractionService();
-  const result = service.parseText('*** APELLIDO / SURNAME LOPEZ\nNOMBRE / GIVEN NAME MARIA\nNUMERO 22333444', 80);
+  const result = service.parseText('REPUBLICA ARGENTINA\nDOCUMENTO NACIONAL DE IDENTIDAD\n*** APELLIDO / SURNAME LOPEZ\nNOMBRE / GIVEN NAME MARIA\nNUMERO 22333444', 80);
   assert.equal(result.success, true);
   assert.equal(result.apellido, 'LOPEZ');
   assert.equal(result.nombre, 'MARIA');
+});
+
+test('DNI OCR parseText rechaza texto generico aunque tenga nombre y DNI', () => {
+  const service = new DniExtractionService();
+  const result = service.parseText('RECIBO DE CONSULTA\nAPELLIDO PEREZ\nNOMBRE JUAN\nDNI 12345678', 90);
+  assert.equal(result.success, false);
+  assert.equal(result.reason, 'NOT_ARGENTINE_DNI');
+});
+
+test('DNI OCR parseText rechaza imagen sin estructura de DNI', () => {
+  const service = new DniExtractionService();
+  const result = service.parseText('Flor roja con hojas verdes en un jardin', 92);
+  assert.equal(result.success, false);
+  assert.equal(result.dni, null);
 });
 
 test('DNI OCR parseText falla por baja confidence o campos faltantes', () => {
@@ -151,6 +166,77 @@ test('REFEPS parser reporta STRUCTURE_MISMATCH si cambia la estructura', () => {
     () => provider.parseHtml(fixture('malformed-response.html'), '123'),
     error => error instanceof RefepsProviderError && error.code === 'STRUCTURE_MISMATCH',
   );
+});
+
+test('verificacion profesional rechaza matricula menor a 4 digitos antes de REFEPS', async () => {
+  const service = new ValidacionProfesionalServiceClass();
+  let refepsCalled = false;
+  service.DniExtractionService = { extractAsync: async () => ({ success: true }) };
+  service.RefepsProvider = { buscarPorMatricula: async () => { refepsCalled = true; } };
+
+  await assert.rejects(
+    () => service.verifyIdentityDataAsync({
+      imageBuffer: Buffer.from('dni'),
+      matricula: '123',
+      declaredIdentity: { nombre: 'Juan', apellido: 'Perez' },
+    }),
+    error => error.statusCode === 400 && error.code === 'INVALID_LICENSE',
+  );
+  assert.equal(refepsCalled, false);
+});
+
+test('verificacion profesional no consulta REFEPS si la imagen no parece DNI', async () => {
+  const service = new ValidacionProfesionalServiceClass();
+  let refepsCalled = false;
+  service.DniExtractionService = {
+    extractAsync: async () => ({ success: false, reason: 'NOT_ARGENTINE_DNI', confidence: 90 }),
+  };
+  service.RefepsProvider = { buscarPorMatricula: async () => { refepsCalled = true; } };
+
+  const result = await service.verifyIdentityDataAsync({
+    imageBuffer: Buffer.from('flower'),
+    matricula: '1234',
+    declaredIdentity: { nombre: 'Juan', apellido: 'Perez' },
+  });
+  assert.equal(result.status, 'MANUAL_REVIEW');
+  assert.equal(result.reason, 'NOT_ARGENTINE_DNI');
+  assert.equal(refepsCalled, false);
+});
+
+test('verificacion profesional devuelve DATA_MISMATCH si el DNI es de otra persona', async () => {
+  const service = new ValidacionProfesionalServiceClass();
+  service.DniExtractionService = {
+    extractAsync: async () => ({ success: true, nombre: 'Maria', apellido: 'Gonzalez', dni: '12345678', confidence: 90 }),
+  };
+
+  const result = await service.verifyIdentityDataAsync({
+    imageBuffer: Buffer.from('dni'),
+    matricula: '1234',
+    declaredIdentity: { nombre: 'Juan', apellido: 'Perez' },
+  });
+  assert.equal(result.status, 'DATA_MISMATCH');
+});
+
+test('verificacion profesional devuelve VERIFIED si DNI, identidad y REFEPS coinciden', async () => {
+  const service = new ValidacionProfesionalServiceClass();
+  service.DniExtractionService = {
+    extractAsync: async () => ({ success: true, nombre: 'Juan', apellido: 'Perez', dni: '12345678', confidence: 90 }),
+  };
+  service.RefepsProvider = {
+    buscarPorMatricula: async () => ({
+      found: true,
+      ambiguous: false,
+      results: [{ nombre: 'Juan', apellido: 'Perez', dni: '12345678', matricula: '1234', habilitado: true }],
+    }),
+  };
+
+  const result = await service.verifyIdentityDataAsync({
+    imageBuffer: Buffer.from('dni'),
+    matricula: '1234',
+    declaredIdentity: { nombre: 'Juan', apellido: 'Perez' },
+  });
+  assert.equal(result.status, 'VERIFIED');
+  assert.equal(result.verified, true);
 });
 
 test('Google profesional nuevo exige frente del DNI', async () => {

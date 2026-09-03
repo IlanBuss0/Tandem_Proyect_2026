@@ -3,6 +3,7 @@ import { normalizeDocument } from '../modules/professional-verification/name-nor
 
 const MIN_CONFIDENCE = 55;
 const DEFAULT_TIMEOUT_MS = 20000;
+const MIN_DNI_STRUCTURE_SCORE = 4;
 
 export default class DniExtractionService {
   constructor(ocr = tesseract.recognize, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
@@ -36,7 +37,9 @@ export default class DniExtractionService {
       ?? normalizedText.match(/\b(\d{7,8})\b/);
     const dni = normalizeDocument(dniMatch?.[1]);
     const numericConfidence = Number(confidence) || 0;
-    const success = Boolean(nombre && apellido && /^\d{7,8}$/.test(dni) && numericConfidence >= MIN_CONFIDENCE);
+    const structure = this.detectDniStructure(normalizedText);
+    const hasIdentityFields = Boolean(nombre && apellido && /^\d{7,8}$/.test(dni));
+    const success = Boolean(hasIdentityFields && structure.compatible && numericConfidence >= MIN_CONFIDENCE);
 
     return {
       success,
@@ -44,7 +47,38 @@ export default class DniExtractionService {
       apellido: apellido || null,
       dni: dni || null,
       confidence: numericConfidence,
-      reason: success ? null : numericConfidence < MIN_CONFIDENCE ? 'LOW_CONFIDENCE' : 'MISSING_FIELDS',
+      structureScore: structure.score,
+      detectedFields: structure.fields,
+      reason: success
+        ? null
+        : numericConfidence < MIN_CONFIDENCE
+          ? 'LOW_CONFIDENCE'
+          : !hasIdentityFields
+            ? 'MISSING_FIELDS'
+            : 'NOT_ARGENTINE_DNI',
+    };
+  }
+
+  detectDniStructure(text) {
+    const checks = {
+      argentina: /REPUBLICA\s+ARGENTINA|REP[UÚ]BLICA\s+ARGENTINA/i.test(text),
+      dniLabel: /\bDNI\b|DOCUMENTO\s+NACIONAL\s+DE\s+IDENTIDAD/i.test(text),
+      surnameLabel: /APELLIDOS?|SURNAME/i.test(text),
+      nameLabel: /NOMBRES?|GIVEN\s+NAMES?/i.test(text),
+      birthDate: /FECHA\s+DE\s+NACIMIENTO|DATE\s+OF\s+BIRTH|NACIMIENTO/i.test(text),
+      nationality: /NACIONALIDAD|NATIONALITY/i.test(text),
+      sex: /\bSEXO\b|\bSEX\b/i.test(text),
+      issueOrExpiry: /FECHA\s+DE\s+(EMISI[OÓ]N|VENCIMIENTO)|DATE\s+OF\s+(ISSUE|EXPIRY)/i.test(text),
+      copyOrProcedure: /EJEMPLAR|TR[AÁ]MITE|NRO\.\s*TR[AÁ]MITE/i.test(text),
+    };
+    const fields = Object.entries(checks)
+      .filter(([, detected]) => detected)
+      .map(([field]) => field);
+    const score = fields.length;
+    return {
+      score,
+      fields,
+      compatible: checks.dniLabel && checks.surnameLabel && checks.nameLabel && score >= MIN_DNI_STRUCTURE_SCORE,
     };
   }
 
