@@ -449,6 +449,7 @@ class AuthService {
     return ValidacionProfesionalService.verifyIdentityDataAsync({
       imageBuffer: dniFrente.buffer,
       matricula: data?.matricula,
+      pdf417Raw: data?.pdf417Raw,
       declaredIdentity: {
         nombre: data?.nombre,
         apellido: data?.apellido,
