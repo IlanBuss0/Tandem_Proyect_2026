@@ -38,7 +38,10 @@ export default class DniExtractionService {
     const dni = normalizeDocument(dniMatch?.[1]);
     const numericConfidence = Number(confidence) || 0;
     const structure = this.detectDniStructure(normalizedText);
-    const hasIdentityFields = Boolean(nombre && apellido && /^\d{7,8}$/.test(dni));
+    const fechaVencimiento = this.dateField(normalizedText, ['FECHA DE VENCIMIENTO', 'DATE OF EXPIRY', 'VENCIMIENTO']);
+    const fechaNacimiento = this.dateField(normalizedText, ['FECHA DE NACIMIENTO', 'DATE OF BIRTH', 'NACIMIENTO']);
+    const fechaEmision = this.dateField(normalizedText, ['FECHA DE EMISIÓN', 'FECHA DE EMISION', 'DATE OF ISSUE', 'EMISIÓN', 'EMISION']);
+    const hasIdentityFields = Boolean(nombre && apellido && /^\d{7,8}$/.test(dni) && fechaVencimiento);
     const success = Boolean(hasIdentityFields && structure.compatible && numericConfidence >= MIN_CONFIDENCE);
 
     return {
@@ -46,6 +49,10 @@ export default class DniExtractionService {
       nombre: nombre || null,
       apellido: apellido || null,
       dni: dni || null,
+      nombreCompleto: [nombre, apellido].filter(Boolean).join(' ') || null,
+      fechaVencimiento,
+      fechaNacimiento,
+      fechaEmision,
       confidence: numericConfidence,
       structureScore: structure.score,
       detectedFields: structure.fields,
@@ -53,10 +60,20 @@ export default class DniExtractionService {
         ? null
         : numericConfidence < MIN_CONFIDENCE
           ? 'LOW_CONFIDENCE'
-          : !hasIdentityFields
-            ? 'MISSING_FIELDS'
-            : 'NOT_ARGENTINE_DNI',
+          : !structure.compatible
+            ? 'NOT_ARGENTINE_DNI'
+            : 'MISSING_FIELDS',
     };
+  }
+
+  dateField(text, labels) {
+    const labelPattern = labels.map(value => value.replace(/\s+/g, '\\s+')).join('|');
+    const match = String(text ?? '').match(new RegExp(`(?:${labelPattern})\\s*[:\\-]?\\s*(\\d{1,2}[\\/.\\-]\\d{1,2}[\\/.\\-]\\d{4})`, 'i'));
+    if (!match) return null;
+    const [day, month, year] = match[1].split(/[\/.\-]/).map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
 
   detectDniStructure(text) {

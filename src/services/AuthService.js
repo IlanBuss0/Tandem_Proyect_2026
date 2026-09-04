@@ -462,6 +462,8 @@ class AuthService {
 
     const message = result.status === VERIFICATION_STATUS.DATA_MISMATCH
       ? 'Los datos del DNI no coinciden con el registro profesional seleccionado.'
+      : result.reason === 'EXPIRED_DOCUMENT'
+        ? 'Tu DNI no está vigente. Para continuar necesitás utilizar un DNI vigente.'
       : result.reason === 'NOT_ARGENTINE_DNI' || result.reason === 'MISSING_FIELDS'
         ? 'No pudimos reconocer un DNI argentino valido en esta imagen.'
         : 'No pudimos verificar el DNI profesional. Intenta nuevamente.';

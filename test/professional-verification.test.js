@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
+import express from 'express';
 import { normalizeDocument, normalizeIdentityText, namesMatch } from '../src/modules/professional-verification/name-normalization.js';
 import DniExtractionService from '../src/services/DniExtractionService.js';
 import ProfessionalIdentityMatcher from '../src/services/ProfessionalIdentityMatcher.js';
@@ -9,8 +11,64 @@ import RefepsPublicProvider, { RefepsProviderError } from '../src/providers/prof
 import ValidacionProfesionalServiceClass from '../src/services/ValidacionProfesionalService.js';
 import AuthService from '../src/services/AuthService.js';
 import AuthorizationService from '../src/services/AuthorizationService.js';
+import RefepsSearchController from '../src/controllers/RefepsSearchController.js';
+import AuthController from '../src/controllers/AuthController.js';
+import { authMiddleware } from '../src/middlewares/auth.middleware.js';
+import { errorMiddleware } from '../src/middlewares/error.middleware.js';
 
 const fixture = name => readFileSync(join('test', 'fixtures', 'refeps', name), 'utf8');
+
+async function request(app, path, options = {}) {
+  const server = createServer(app);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  try {
+    return await fetch(`http://127.0.0.1:${port}${path}`, options);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+}
+
+function registrationRoutesApp() {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/auth', AuthController);
+  app.use('/api/refeps', RefepsSearchController);
+  app.use('/api', authMiddleware);
+  app.get('/api/private-route-for-test', (_req, res) => res.status(200).json({ ok: true }));
+  app.use(errorMiddleware);
+  return app;
+}
+
+test('ruta publica REFEPS invalida matricula sin exigir token', async () => {
+  const response = await request(registrationRoutesApp(), '/api/refeps/search-refeps', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ matricula: '123' }),
+  });
+  const body = await response.json();
+  assert.equal(response.status, 400);
+  assert.equal(body.code, 'INVALID_LICENSE');
+  assert.notEqual(body.error, 'Token requerido');
+});
+
+test('ruta privada sigue exigiendo autenticacion sin token', async () => {
+  const response = await request(registrationRoutesApp(), '/api/private-route-for-test');
+  const body = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(body.error, 'Token requerido');
+});
+
+test('endpoint publico de DNI responde error controlado sin token cuando falta archivo', async () => {
+  const response = await request(registrationRoutesApp(), '/api/auth/verify-professional-dni', {
+    method: 'POST',
+    body: new FormData(),
+  });
+  const body = await response.json();
+  assert.equal(response.status, 400);
+  assert.match(body.error, /DNI/);
+  assert.notEqual(body.error, 'Token requerido');
+});
 
 test('normalizacion limpia tildes, mayusculas y espacios', () => {
   assert.equal(normalizeIdentityText('  ÁNA   María  '), 'ana maria');
@@ -101,6 +159,7 @@ test('DNI OCR parseText extrae formato argentino bilingue', () => {
     NOMBRE / GIVEN NAME
     JUAN CARLOS
     DNI 12.345.678
+    FECHA DE VENCIMIENTO 31/12/2035
   `, 87);
   assert.equal(result.success, true);
   assert.equal(result.apellido, 'PEREZ GOMEZ');
@@ -110,7 +169,7 @@ test('DNI OCR parseText extrae formato argentino bilingue', () => {
 
 test('DNI OCR parseText maneja ruido y etiquetas en una linea', () => {
   const service = new DniExtractionService();
-  const result = service.parseText('REPUBLICA ARGENTINA\nDOCUMENTO NACIONAL DE IDENTIDAD\n*** APELLIDO / SURNAME LOPEZ\nNOMBRE / GIVEN NAME MARIA\nNUMERO 22333444', 80);
+  const result = service.parseText('REPUBLICA ARGENTINA\nDOCUMENTO NACIONAL DE IDENTIDAD\n*** APELLIDO / SURNAME LOPEZ\nNOMBRE / GIVEN NAME MARIA\nNUMERO 22333444\nFECHA DE VENCIMIENTO 31/12/2035', 80);
   assert.equal(result.success, true);
   assert.equal(result.apellido, 'LOPEZ');
   assert.equal(result.nombre, 'MARIA');
@@ -133,9 +192,19 @@ test('DNI OCR parseText rechaza imagen sin estructura de DNI', () => {
 test('DNI OCR parseText falla por baja confidence o campos faltantes', () => {
   const service = new DniExtractionService();
   assert.equal(service.parseText('APELLIDO PEREZ\nNOMBRE JUAN\nDNI 12345678', 40).reason, 'LOW_CONFIDENCE');
-  assert.equal(service.parseText('NOMBRE JUAN\nDNI 12345678', 80).reason, 'MISSING_FIELDS');
-  assert.equal(service.parseText('APELLIDO PEREZ\nDNI 12345678', 80).reason, 'MISSING_FIELDS');
-  assert.equal(service.parseText('APELLIDO PEREZ\nNOMBRE JUAN', 80).reason, 'MISSING_FIELDS');
+  assert.equal(service.parseText('NOMBRE JUAN\nDNI 12345678', 80).reason, 'NOT_ARGENTINE_DNI');
+  assert.equal(service.parseText('APELLIDO PEREZ\nDNI 12345678', 80).reason, 'NOT_ARGENTINE_DNI');
+  assert.equal(service.parseText('APELLIDO PEREZ\nNOMBRE JUAN', 80).reason, 'NOT_ARGENTINE_DNI');
+});
+
+test('verificacion profesional rechaza DNI vencido antes de consultar REFEPS', async () => {
+  const service = new ValidacionProfesionalServiceClass();
+  let refepsCalled = false;
+  service.DniExtractionService = { extractAsync: async () => ({ success: true, nombre: 'Juan', apellido: 'Perez', dni: '12345678', fechaVencimiento: '2020-01-01' }) };
+  service.RefepsProvider = { buscarPorMatricula: async () => { refepsCalled = true; } };
+  const result = await service.verifyIdentityDataAsync({ imageBuffer: Buffer.from('dni'), matricula: '1234', declaredIdentity: { nombre: 'Juan', apellido: 'Perez' } });
+  assert.equal(result.status, 'EXPIRED_DOCUMENT');
+  assert.equal(refepsCalled, false);
 });
 
 test('DNI OCR extractAsync corta por timeout', async () => {
@@ -206,7 +275,7 @@ test('verificacion profesional no consulta REFEPS si la imagen no parece DNI', a
 test('verificacion profesional devuelve DATA_MISMATCH si el DNI es de otra persona', async () => {
   const service = new ValidacionProfesionalServiceClass();
   service.DniExtractionService = {
-    extractAsync: async () => ({ success: true, nombre: 'Maria', apellido: 'Gonzalez', dni: '12345678', confidence: 90 }),
+    extractAsync: async () => ({ success: true, nombre: 'Maria', apellido: 'Gonzalez', dni: '12345678', fechaVencimiento: '2035-12-31', confidence: 90 }),
   };
 
   const result = await service.verifyIdentityDataAsync({
@@ -220,7 +289,7 @@ test('verificacion profesional devuelve DATA_MISMATCH si el DNI es de otra perso
 test('verificacion profesional devuelve VERIFIED si DNI, identidad y REFEPS coinciden', async () => {
   const service = new ValidacionProfesionalServiceClass();
   service.DniExtractionService = {
-    extractAsync: async () => ({ success: true, nombre: 'Juan', apellido: 'Perez', dni: '12345678', confidence: 90 }),
+    extractAsync: async () => ({ success: true, nombre: 'Juan', apellido: 'Perez', dni: '12345678', fechaVencimiento: '2035-12-31', confidence: 90 }),
   };
   service.RefepsProvider = {
     buscarPorMatricula: async () => ({

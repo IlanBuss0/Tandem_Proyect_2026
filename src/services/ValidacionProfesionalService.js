@@ -77,6 +77,9 @@ export default class ValidacionProfesionalService {
     if (!dniData.success) {
       return this.verificationResult(VERIFICATION_STATUS.MANUAL_REVIEW, { reason: dniData.reason, dniData });
     }
+    if (this.isExpired(dniData.fechaVencimiento)) {
+      return this.verificationResult(VERIFICATION_STATUS.EXPIRED_DOCUMENT, { reason: 'EXPIRED_DOCUMENT', dniData });
+    }
     if (!namesMatch(dniData.nombre, identity.nombre) || !namesMatch(dniData.apellido, identity.apellido)) {
       return this.verificationResult(VERIFICATION_STATUS.DATA_MISMATCH, { reason: 'DECLARED_IDENTITY_MISMATCH', dniData });
     }
@@ -125,6 +128,12 @@ export default class ValidacionProfesionalService {
     return matricula;
   }
 
+  isExpired(value, now = new Date()) {
+    if (!value) return true;
+    const expiry = new Date(`${value}T23:59:59.999Z`);
+    return Number.isNaN(expiry.getTime()) || expiry.getTime() < now.getTime();
+  }
+
   verificationResult(status, { reason = null, result = null, dniData = null } = {}) {
     const reviewStatus = [VERIFICATION_STATUS.VERIFICATION_ERROR, VERIFICATION_STATUS.NOT_FOUND].includes(status)
       ? VERIFICATION_STATUS.MANUAL_REVIEW
@@ -139,6 +148,8 @@ export default class ValidacionProfesionalService {
         nombre: dniData.nombre,
         apellido: dniData.apellido,
         dni: dniData.dni,
+        nombreCompleto: dniData.nombreCompleto,
+        fechaVencimiento: dniData.fechaVencimiento,
         confidence: dniData.confidence,
         structureScore: dniData.structureScore,
         detectedFields: dniData.detectedFields,
