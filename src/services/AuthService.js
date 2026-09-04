@@ -20,12 +20,15 @@ import {
   hashRefreshToken,
 } from '../modules/security/refresh-token.helper.js';
 import { envConfig } from '../configs/env.config.js';
+import ValidacionProfesionalServiceClass from './ValidacionProfesionalService.js';
+import { VERIFICATION_STATUS } from '../modules/professional-verification/verification.constants.js';
 
 const UsuarioService = new UsuarioServiceClass();
 const PertenecienteService = new PertenecienteServiceClass();
 const TutorService = new TutorServiceClass();
 const ProfesionalService = new ProfesionalServiceClass();
 const EmailService = new EmailServiceClass();
+const ValidacionProfesionalService = new ValidacionProfesionalServiceClass();
 
 const EMAIL_TOKEN_EXPIRES_MS = 24 * 60 * 60 * 1000; // 24hs
 const PASSWORD_RESET_EXPIRES_MS = 60 * 60 * 1000; // 1h
@@ -69,7 +72,7 @@ class AuthService {
     };
   }
 
-  async register(data) {
+  async register(data, dniFrente = null) {
     const rol = String(data?.rol || '').trim().toLowerCase();
     const idTipoUsuario = ROLES_REGISTRABLES[rol];
 
@@ -92,6 +95,18 @@ class AuthService {
 
     if (!nombreUsuario || !nombre || !apellido) {
       throw new AppError('nombre_usuario, nombre y apellido son obligatorios.', 400);
+    }
+
+    if (idTipoUsuario === ROLES_REGISTRABLES.profesional && !dniFrente?.buffer) {
+      throw new AppError('La fotografia del frente del DNI es obligatoria para profesionales.', 400);
+    }
+
+    if (idTipoUsuario === ROLES_REGISTRABLES.profesional) {
+      await this._assertProfessionalDniVerified({
+        imageBuffer: dniFrente.buffer,
+        matricula: data?.matricula,
+        declaredIdentity: { nombre, apellido },
+      });
     }
 
     // Whitelist estricta: nunca se aceptan contrasena_hash, activo, ni
@@ -122,6 +137,14 @@ class AuthService {
     }
 
     const user = await AuthRepository.findSafeById(newId);
+    let professionalVerification;
+    if (idTipoUsuario === ROLES_REGISTRABLES.profesional) {
+      professionalVerification = await this._verifyProfessionalRegistrationSafely({
+        idUsuario: newId,
+        imageBuffer: dniFrente.buffer,
+        declaredIdentity: { nombre, apellido },
+      });
+    }
 
     // Best-effort: si Resend esta caido o sin configurar no debe romper el
     // registro (EmailService ya loguea el link en consola como fallback).
@@ -129,7 +152,8 @@ class AuthService {
       console.error('[AuthService] No se pudo enviar el mail de verificacion:', error.message);
     });
 
-    return this.createSession(user);
+    const session = await this.createSession(user);
+    return professionalVerification ? { ...session, professionalVerification } : session;
   }
 
   _issueAndSendVerificationEmail = async (user) => {
@@ -300,9 +324,15 @@ class AuthService {
     return { correo: updated.correo, email_verificado: updated.email_verificado };
   }
 
-  async loginWithGoogle(accessToken, rol, data = {}) {
-    if (!envConfig.googleClientId) throw new AppError('El login con Google no esta configurado en el servidor.', 503);
+  async loginWithGoogle(accessToken, rol, data = {}, dniFrente = null) {
     if (!accessToken) throw new AppError('accessToken es obligatorio.', 400);
+
+    const requestedRole = String(rol || '').trim().toLowerCase();
+    if (requestedRole === 'profesional' && !dniFrente?.buffer) {
+      throw new AppError('La fotografia del frente del DNI es obligatoria para profesionales.', 400);
+    }
+
+    if (!envConfig.googleClientId) throw new AppError('El login con Google no esta configurado en el servidor.', 503);
 
     let payload;
     try {
@@ -329,7 +359,7 @@ class AuthService {
       return this.createSession(existing);
     }
 
-    const rolNormalizado = String(rol || '').trim().toLowerCase();
+    const rolNormalizado = requestedRole;
     const idTipoUsuario = ROLES_REGISTRABLES[rolNormalizado];
 
     if (!idTipoUsuario) {
@@ -340,6 +370,17 @@ class AuthService {
 
     if (idTipoUsuario === ROLES_REGISTRABLES.profesional && (!data?.profesion || !data?.matricula)) {
       throw new AppError('profesion y matricula son obligatorios para registrarte como profesional.', 400);
+    }
+
+    if (idTipoUsuario === ROLES_REGISTRABLES.profesional) {
+      await this._assertProfessionalDniVerified({
+        imageBuffer: dniFrente.buffer,
+        matricula: data?.matricula,
+        declaredIdentity: {
+          nombre: payload.given_name || payload.name || 'Usuario',
+          apellido: payload.family_name || '',
+        },
+      });
     }
 
     const nombreUsuario = await this._generateUsernameFromEmail(payload.email);
@@ -372,8 +413,63 @@ class AuthService {
     await AuthRepository.markEmailVerified(newId);
 
     const user = await AuthRepository.findSafeById(newId);
-    return this.createSession(user);
+    let professionalVerification;
+    if (idTipoUsuario === ROLES_REGISTRABLES.profesional) {
+      professionalVerification = await this._verifyProfessionalRegistrationSafely({
+        idUsuario: newId,
+        imageBuffer: dniFrente.buffer,
+        declaredIdentity: {
+          nombre: payload.given_name || payload.name || 'Usuario',
+          apellido: payload.family_name || '',
+        },
+      });
+    }
+    const session = await this.createSession(user);
+    return professionalVerification ? { ...session, professionalVerification } : session;
   }
+
+  _verifyProfessionalRegistrationSafely = async ({ idUsuario, imageBuffer, declaredIdentity }) => {
+    try {
+      return await ValidacionProfesionalService.verifyRegistrationAsync({ idUsuario, imageBuffer, declaredIdentity });
+    } catch (error) {
+      console.error('[ProfessionalVerification] automated verification persistence failed:', error.message);
+      return {
+        status: VERIFICATION_STATUS.VERIFICATION_ERROR,
+        reviewStatus: VERIFICATION_STATUS.MANUAL_REVIEW,
+        messageCode: 'PROFESSIONAL_VERIFICATION_PENDING',
+      };
+    }
+  };
+
+  verifyProfessionalDniForRegistration = async (data, dniFrente = null) => {
+    if (!dniFrente?.buffer) {
+      throw new AppError('La fotografia del frente del DNI es obligatoria para profesionales.', 400);
+    }
+
+    return ValidacionProfesionalService.verifyIdentityDataAsync({
+      imageBuffer: dniFrente.buffer,
+      matricula: data?.matricula,
+      pdf417Raw: data?.pdf417Raw,
+      declaredIdentity: {
+        nombre: data?.nombre,
+        apellido: data?.apellido,
+      },
+    });
+  };
+
+  _assertProfessionalDniVerified = async ({ imageBuffer, matricula, declaredIdentity }) => {
+    const result = await ValidacionProfesionalService.verifyIdentityDataAsync({ imageBuffer, matricula, declaredIdentity });
+    if (result.status === VERIFICATION_STATUS.VERIFIED) return result;
+
+    const message = result.status === VERIFICATION_STATUS.DATA_MISMATCH
+      ? 'Los datos del DNI no coinciden con el registro profesional seleccionado.'
+      : result.reason === 'EXPIRED_DOCUMENT'
+        ? 'Tu DNI no está vigente. Para continuar necesitás utilizar un DNI vigente.'
+      : result.reason === 'NOT_ARGENTINE_DNI' || result.reason === 'MISSING_FIELDS'
+        ? 'No pudimos reconocer un DNI argentino valido en esta imagen.'
+        : 'No pudimos verificar el DNI profesional. Intenta nuevamente.';
+    throw new AppError(message, 422, result.status);
+  };
 
   _generateUsernameFromEmail = async (email) => {
     const base = String(email).split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase().slice(0, 20) || 'usuario';

@@ -5,9 +5,9 @@ export default class NotificacionService {
     this.NotificacionRepository = new NotificacionRepository();
   }
 
-  getMineAsync = async (userId) => {
+  getMineAsync = async (userId, limit) => {
     this.validateUserId(userId);
-    return this.NotificacionRepository.getByUsuarioDestinoIdAsync(userId);
+    return this.NotificacionRepository.getByUsuarioDestinoIdAsync(userId, limit);
   };
 
   markAsReadForUserAsync = async (notificationId, userId) => {

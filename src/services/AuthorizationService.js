@@ -8,6 +8,7 @@ import {
   PROFESIONAL_DEFAULTS,
   PROFESIONAL_PERMISSIONS,
 } from '../modules/security/permissions.constants.js';
+import { isVerifiedProfessionalStatus } from '../modules/professional-verification/professional-status.js';
 
 class AuthorizationService {
   async getUserContext(idUsuario) {
@@ -35,8 +36,11 @@ class AuthorizationService {
     const defaults = PERTENECIENTE_DEFAULTS[mode];
     const permisos = {};
 
+    const otorgados = await AuthorizationRepository.getAllPertenecientePermissionsAsync(idPerteneciente);
+    const otorgadosByName = new Map(otorgados.map((row) => [String(row.nombre).toLowerCase(), row]));
+
     for (const [nombre, defaultValue] of Object.entries(defaults)) {
-      const row = await AuthorizationRepository.getPertenecientePermission(idPerteneciente, nombre);
+      const row = otorgadosByName.get(nombre.toLowerCase()) ?? null;
       permisos[nombre] = {
         habilitado: row?.habilitado ?? defaultValue,
         source: row ? 'otorgado' : 'default',
@@ -62,9 +66,12 @@ class AuthorizationService {
     const vinculo = await AuthorizationRepository.getVinculoProfesionalById(idVinculoProfesionalPerteneciente);
     if (!vinculo) throw new AppError('Vinculo profesional-perteneciente no encontrado', 404);
 
+    const otorgados = await AuthorizationRepository.getAllProfesionalPermissionsAsync(idVinculoProfesionalPerteneciente);
+    const otorgadosByName = new Map(otorgados.map((row) => [String(row.nombre).toLowerCase(), row]));
+
     const permisos = {};
     for (const [nombre, defaultValue] of Object.entries(PROFESIONAL_DEFAULTS)) {
-      const row = await AuthorizationRepository.getProfesionalPermission(idVinculoProfesionalPerteneciente, nombre);
+      const row = otorgadosByName.get(nombre.toLowerCase()) ?? null;
       const resolvedDefault = await this.resolveProfesionalDefault(nombre, vinculo, defaultValue);
       permisos[nombre] = {
         habilitado: row?.habilitado ?? resolvedDefault,
@@ -520,7 +527,7 @@ class AuthorizationService {
     const estadoVinculo = String(vinculo.estado_vinculo ?? '').toLowerCase();
     const estadoValidacion = String(vinculo.estado_validacion_profesional ?? '').toLowerCase();
     const vinculoActivo = ['activo', 'activa', 'aprobado', 'aprobada', 'aceptado', 'aceptada'].includes(estadoVinculo);
-    const profesionalValidado = ['validado', 'validada', 'aprobado', 'aprobada'].includes(estadoValidacion);
+    const profesionalValidado = isVerifiedProfessionalStatus(estadoValidacion);
     const aprobadoPorTutor = !vinculo.requiere_aprobacion_tutor || (vinculo.fue_aprobado_por_tutor && vinculo.id_tutor_aprobador);
 
     return Boolean(

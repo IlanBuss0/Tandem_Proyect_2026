@@ -345,7 +345,7 @@ export default class ChatService {
       FROM profesionales p
       INNER JOIN estados_validaciones_profesionales evp ON evp.id = p.id_estado_validacion
       WHERE p.id = $1
-        AND LOWER(evp.nombre) IN ('validado', 'validada', 'aprobado', 'aprobada')
+        AND LOWER(evp.nombre) IN ('verified', 'validado', 'validada', 'aprobado', 'aprobada', 'verificado', 'verificada')
       LIMIT 1
     `;
     const validado = await BD.queryOne(sql, [idProfesional]);
