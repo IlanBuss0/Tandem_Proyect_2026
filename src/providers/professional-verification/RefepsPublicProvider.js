@@ -20,11 +20,19 @@ export default class RefepsPublicProvider {
   }
 
   buscarPorMatricula = async (numeroMatricula) => {
+    return this.buscarPorCriterio({ searchBy: 'matricula', matricula: numeroMatricula });
+  };
+
+  buscarPorDni = async (dni) => {
+    return this.buscarPorCriterio({ searchBy: 'dni', dni });
+  };
+
+  buscarPorCriterio = async ({ searchBy, matricula = '', dni = '' }) => {
     console.info('[ProfessionalVerification] REFEPS request started');
     let lastError;
     for (let attempt = 0; attempt <= this.retries; attempt += 1) {
       try {
-        return await this.request(numeroMatricula);
+        return await this.request({ searchBy, matricula, dni });
       } catch (error) {
         lastError = error;
         if (attempt < this.retries) continue;
@@ -34,7 +42,7 @@ export default class RefepsPublicProvider {
     throw lastError instanceof RefepsProviderError ? lastError : new RefepsProviderError('No se pudo consultar REFEPS');
   };
 
-  async request(numeroMatricula) {
+  async request({ searchBy, matricula, dni }) {
     const getResponse = await this.http.get(this.url, { timeout: this.timeout, validateStatus: status => status === 200 });
     const $ = cheerio.load(getResponse.data);
     const formBuildId = $('#consulta-profesionales-form input[name="form_build_id"]').val()
@@ -43,7 +51,7 @@ export default class RefepsPublicProvider {
 
     const cookie = (getResponse.headers?.['set-cookie'] || []).map(value => value.split(';')[0]).join('; ');
     const body = new URLSearchParams({
-      searchBy: 'matricula', dni: '', matricula: String(numeroMatricula), apellidonombre: '',
+      searchBy, dni: String(dni), matricula: String(matricula), apellidonombre: '',
       op: 'Consultar', form_build_id: String(formBuildId), form_id: 'argobar_consulta_refeps_profesionales', tarro_de_miel: '',
     });
     const response = await this.http.post(this.url, body.toString(), {
@@ -51,10 +59,11 @@ export default class RefepsPublicProvider {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...(cookie ? { Cookie: cookie } : {}) },
       validateStatus: status => status === 200,
     });
-    return this.parseHtml(response.data, numeroMatricula);
+    return this.parseHtml(response.data, { searchBy, value: searchBy === 'dni' ? dni : matricula });
   }
 
-  parseHtml(html, numeroMatricula) {
+  parseHtml(html, criterio) {
+    criterio = typeof criterio === 'string' ? { searchBy: 'matricula', value: criterio } : criterio;
     const $ = cheerio.load(String(html ?? ''));
     const scripts = $('script').map((_index, element) => $(element).html() || '').get();
     const script = scripts.find(value => value.includes('Drupal.settings.refepsProfesionales.allItems'));
@@ -70,11 +79,14 @@ export default class RefepsPublicProvider {
 
     let items;
     try { items = JSON.parse(json); } catch { throw new RefepsProviderError('JSON de resultados invalido', 'STRUCTURE_MISMATCH'); }
-    const target = String(numeroMatricula).trim();
+    const target = String(criterio?.value ?? '').trim();
+    const matches = value => criterio?.searchBy === 'dni'
+      ? String(value || '').replace(/\D/g, '') === target.replace(/\D/g, '')
+      : String(value || '').trim() === target;
     if (!Array.isArray(items)) throw new RefepsProviderError('JSON de resultados invalido', 'STRUCTURE_MISMATCH');
 
     const results = items.flatMap(item => (item.profesiones || []).flatMap(profesion =>
-      (profesion.matriculas || []).filter(record => String(record.matricula).trim() === target).map(record => ({
+      (profesion.matriculas || []).filter(record => criterio?.searchBy === 'dni' ? matches(item.nroDoc) : matches(record.matricula)).map(record => ({
         nombre: item.nombre || null,
         apellido: item.apellido || null,
         dni: item.nroDoc || null,
