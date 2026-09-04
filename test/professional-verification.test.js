@@ -222,6 +222,14 @@ test('REFEPS parser normaliza profesional activo', () => {
   assert.equal(result.results[0].dni, '12.345.678');
 });
 
+test('REFEPS parser permite buscar por DNI sin perder la matrícula del resultado', () => {
+  const provider = new RefepsPublicProvider();
+  const result = provider.parseHtml(fixture('professional-active.html'), { searchBy: 'dni', value: '12345678' });
+  assert.equal(result.found, true);
+  assert.equal(result.results[0].dni, '12.345.678');
+  assert.equal(result.results[0].matricula, '12345');
+});
+
 test('REFEPS parser normaliza matricula inactiva, multiples y sin resultados', () => {
   const provider = new RefepsPublicProvider();
   assert.equal(provider.parseHtml(fixture('professional-inactive.html'), '9988').results[0].habilitado, false);
