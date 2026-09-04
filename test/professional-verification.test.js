@@ -207,6 +207,24 @@ test('verificacion profesional rechaza DNI vencido antes de consultar REFEPS', a
   assert.equal(refepsCalled, false);
 });
 
+test('verificacion profesional valida vencimiento de PDF417 antes de consultar REFEPS', async () => {
+  const service = new ValidacionProfesionalServiceClass();
+  let refepsCalled = false;
+  service.DniExtractionService = {
+    parseText: () => ({ success: true, nombre: 'Juan', apellido: 'Perez', dni: '12345678', fechaVencimiento: '2020-01-01' }),
+    extractAsync: async () => { throw new Error('No debe ejecutar OCR cuando el PDF417 es valido'); },
+  };
+  service.RefepsProvider = { buscarPorMatricula: async () => { refepsCalled = true; } };
+  const result = await service.verifyIdentityDataAsync({
+    imageBuffer: Buffer.from('dni'),
+    matricula: '1234',
+    declaredIdentity: { nombre: 'Juan', apellido: 'Perez' },
+    pdf417Raw: 'contenido-pdf417',
+  });
+  assert.equal(result.status, 'EXPIRED_DOCUMENT');
+  assert.equal(refepsCalled, false);
+});
+
 test('DNI OCR extractAsync corta por timeout', async () => {
   const service = new DniExtractionService(() => new Promise(() => {}), { timeoutMs: 5 });
   const result = await service.extractAsync(Buffer.from('image'));
@@ -220,6 +238,14 @@ test('REFEPS parser normaliza profesional activo', () => {
   assert.equal(result.found, true);
   assert.equal(result.results[0].habilitado, true);
   assert.equal(result.results[0].dni, '12.345.678');
+});
+
+test('REFEPS parser permite buscar por DNI sin perder la matrícula del resultado', () => {
+  const provider = new RefepsPublicProvider();
+  const result = provider.parseHtml(fixture('professional-active.html'), { searchBy: 'dni', value: '12345678' });
+  assert.equal(result.found, true);
+  assert.equal(result.results[0].dni, '12.345.678');
+  assert.equal(result.results[0].matricula, '12345');
 });
 
 test('REFEPS parser normaliza matricula inactiva, multiples y sin resultados', () => {

@@ -5,10 +5,10 @@ export default class NotificacionRepository {
     console.log('Estoy en: NotificacionRepository.constructor()');
   }
 
-  getByUsuarioDestinoIdAsync = async (idUsuarioDestino) => {
+  getByUsuarioDestinoIdAsync = async (idUsuarioDestino, limit = 50) => {
     console.log(`NotificacionRepository.getByUsuarioDestinoIdAsync(${idUsuarioDestino})`);
-    const sql = `SELECT n.id, n.id_usuario_destino, n.id_usuario_actor, n.id_tipo_notificacion, n.titulo, n.cuerpo, n.leida, n.fecha_creacion, n.fecha_lectura, n.reference_type, n.reference_id, n.context_user_id, CASE WHEN rr.source_type='routine' THEN rr.routine_id END AS reference_routine_id, CASE WHEN rr.source_type='routine' THEN rr.item_id END AS reference_item_id, CASE WHEN rr.source_type='calendar' THEN rr.item_id END AS reference_calendar_event_id FROM notificaciones n LEFT JOIN recordatorios_programados rr ON n.reference_type IN ('routine','calendar') AND rr.id = n.reference_id WHERE n.id_usuario_destino = $1 ORDER BY n.id DESC`;
-    return await BD.query(sql, [idUsuarioDestino]);
+    const sql = `SELECT n.id, n.id_usuario_destino, n.id_usuario_actor, n.id_tipo_notificacion, n.titulo, n.cuerpo, n.leida, n.fecha_creacion, n.fecha_lectura, n.reference_type, n.reference_id, n.context_user_id, CASE WHEN rr.source_type='routine' THEN rr.routine_id END AS reference_routine_id, CASE WHEN rr.source_type='routine' THEN rr.item_id END AS reference_item_id, CASE WHEN rr.source_type='calendar' THEN rr.item_id END AS reference_calendar_event_id FROM notificaciones n LEFT JOIN recordatorios_programados rr ON n.reference_type IN ('routine','calendar') AND rr.id = n.reference_id WHERE n.id_usuario_destino = $1 ORDER BY n.id DESC LIMIT $2`;
+    return await BD.query(sql, [idUsuarioDestino, limit]);
   };
 
   createAsync = async (entity) => {
