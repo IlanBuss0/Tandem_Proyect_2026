@@ -1,7 +1,7 @@
-import axios from 'axios';
 import BD from '../db/BD.js';
 import { envConfig } from '../configs/env.config.js';
 import { cacheService } from './CacheService.js';
+import { groqProvider } from '../providers/ai/aiProviders.js';
 
 // Traduce al espanol las etiquetas del catalogo importado (Mulberry, OpenMoji).
 //
@@ -24,7 +24,6 @@ import { cacheService } from './CacheService.js';
 //     mensual, y en el chequeo de cada 6hs por si un dia anterior se corto
 //     por falta de cupo de Groq)
 
-const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // Modelo principal y de respaldo. Cuando se agota el cupo diario del
 // principal, reintentar no sirve hasta el reset, asi que se cambia a otro
 // modelo con cuota independiente.
@@ -72,20 +71,18 @@ export async function countPendingTranslationsAsync() {
   return row?.total ?? 0;
 }
 
-async function translateBatch(apiKey, names, { attempt = 1, model = null, primaryModelExhaustedRef } = {}) {
+async function translateBatch(names, { attempt = 1, model = null, primaryModelExhaustedRef } = {}) {
   const activeModel = model ?? (primaryModelExhaustedRef.value ? FALLBACK_MODEL : PRIMARY_MODEL);
   try {
-    const response = await axios.post(GROQ_CHAT_URL, {
+    const response = await groqProvider.chatCompletion({
       model: activeModel,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: JSON.stringify(names) },
       ],
       temperature: 0.1,
-      response_format: { type: 'json_object' },
-    }, {
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      timeout: 60000,
+      responseFormat: { type: 'json_object' },
+      timeoutMs: 60000,
     });
 
     const text = response?.data?.choices?.[0]?.message?.content?.trim() || '';
@@ -123,13 +120,13 @@ async function translateBatch(apiKey, names, { attempt = 1, model = null, primar
 
       if (isDailyLimit && activeModel === PRIMARY_MODEL) {
         primaryModelExhaustedRef.value = true;
-        return translateBatch(apiKey, names, { attempt: 1, model: FALLBACK_MODEL, primaryModelExhaustedRef });
+        return translateBatch(names, { attempt: 1, model: FALLBACK_MODEL, primaryModelExhaustedRef });
       }
 
       if (!isDailyLimit && attempt <= 3) {
         const wait = attempt * 15000;
         await sleep(wait);
-        return translateBatch(apiKey, names, { attempt: attempt + 1, model: activeModel, primaryModelExhaustedRef });
+        return translateBatch(names, { attempt: attempt + 1, model: activeModel, primaryModelExhaustedRef });
       }
     }
 
@@ -145,16 +142,16 @@ async function translateBatch(apiKey, names, { attempt = 1, model = null, primar
  * listas largas; con lotes mas chicos acierta. Se parte recursivamente hasta
  * lotes de 1, donde ya no puede fallar por conteo.
  */
-async function translateWithSplit(apiKey, names, primaryModelExhaustedRef) {
+async function translateWithSplit(names, primaryModelExhaustedRef) {
   try {
-    return await translateBatch(apiKey, names, { primaryModelExhaustedRef });
+    return await translateBatch(names, { primaryModelExhaustedRef });
   } catch (error) {
     if (!error.isCountMismatch || names.length <= 1) throw error;
 
     const middle = Math.floor(names.length / 2);
     const [left, right] = await Promise.all([
-      translateWithSplit(apiKey, names.slice(0, middle), primaryModelExhaustedRef),
-      translateWithSplit(apiKey, names.slice(middle), primaryModelExhaustedRef),
+      translateWithSplit(names.slice(0, middle), primaryModelExhaustedRef),
+      translateWithSplit(names.slice(middle), primaryModelExhaustedRef),
     ]);
     return [...left, ...right];
   }
@@ -210,7 +207,7 @@ export async function translatePendingLabelsAsync({ limit = null, retranslate = 
     const names = batch.map((row) => row.metadata?.originalName || row.titulo);
 
     try {
-      const spanish = await translateWithSplit(envConfig.groqApiKey, names, primaryModelExhaustedRef);
+      const spanish = await translateWithSplit(names, primaryModelExhaustedRef);
 
       await BD.transaction(async (client) => {
         for (let i = 0; i < batch.length; i += 1) {
