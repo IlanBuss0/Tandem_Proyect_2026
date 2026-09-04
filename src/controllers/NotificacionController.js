@@ -7,7 +7,11 @@ const currentService = new NotificacionService();
 
 router.get('/mine', async (req, res, next) => {
   try {
-    const notifications = await currentService.getMineAsync(req.user.id);
+    // Sin ?limit devuelve el default del repository (50). Con ?limit se
+    // puede pedir mas (tope 200) para la vista de "ver historial".
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : undefined;
+    const notifications = await currentService.getMineAsync(req.user.id, limit);
     res.status(StatusCodes.OK).json(notifications);
   } catch (error) {
     next(error);

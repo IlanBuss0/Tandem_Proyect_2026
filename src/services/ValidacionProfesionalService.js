@@ -62,7 +62,7 @@ export default class ValidacionProfesionalService {
     return await this.ValidacionProfesionalRepository.createAsync(entity);
   };
 
-  verifyIdentityDataAsync = async ({ imageBuffer, matricula, declaredIdentity } = {}) => {
+  verifyIdentityDataAsync = async ({ imageBuffer, matricula, declaredIdentity, pdf417Raw = null } = {}) => {
     const numeroMatricula = this.validateMatricula(matricula);
     const identity = {
       nombre: String(declaredIdentity?.nombre || '').trim(),
@@ -73,7 +73,10 @@ export default class ValidacionProfesionalService {
       throw new AppError('Nombre y apellido son obligatorios para validar la identidad profesional.', 400);
     }
 
-    const dniData = await this.DniExtractionService.extractAsync(imageBuffer);
+    const pdf417Data = pdf417Raw && typeof this.DniExtractionService.parseText === 'function'
+      ? this.DniExtractionService.parseText(pdf417Raw, 100)
+      : null;
+    const dniData = pdf417Data?.success ? pdf417Data : await this.DniExtractionService.extractAsync(imageBuffer);
     if (!dniData.success) {
       return this.verificationResult(VERIFICATION_STATUS.MANUAL_REVIEW, { reason: dniData.reason, dniData });
     }

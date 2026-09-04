@@ -461,6 +461,41 @@ class AuthorizationRepository {
       [idVinculoProfesionalPerteneciente, nombrePermiso],
     );
   };
+
+  // Versiones bulk de los dos metodos de arriba: traen TODOS los permisos
+  // otorgados de un perteneciente / vinculo en 1 query en vez de una por
+  // permiso. DISTINCT ON + el mismo ORDER BY que la version individual para
+  // quedarse con la fila mas reciente si hubiera nombres duplicados en el
+  // catalogo. Devuelven [{ nombre (en minuscula), habilitado }].
+  getAllPertenecientePermissionsAsync = async (idPerteneciente) => {
+    return await BD.query(
+      `
+        SELECT DISTINCT ON (LOWER(cpp.nombre))
+               LOWER(cpp.nombre) AS nombre,
+               pop.habilitado
+        FROM permisos_otorgados_pertenecientes pop
+        INNER JOIN catalogo_permisos_pertenecientes cpp ON cpp.id = pop.id_permiso_perteneciente
+        WHERE pop.id_perteneciente = $1
+        ORDER BY LOWER(cpp.nombre), pop.fecha_modificacion DESC NULLS LAST, pop.id DESC
+      `,
+      [idPerteneciente],
+    );
+  };
+
+  getAllProfesionalPermissionsAsync = async (idVinculoProfesionalPerteneciente) => {
+    return await BD.query(
+      `
+        SELECT DISTINCT ON (LOWER(cpp.nombre))
+               LOWER(cpp.nombre) AS nombre,
+               pop.habilitado
+        FROM permisos_otorgados_profesionales pop
+        INNER JOIN catalogo_permisos_profesionales cpp ON cpp.id = pop.id_permiso_profesional
+        WHERE pop.id_vinculo_profesional_perteneciente = $1
+        ORDER BY LOWER(cpp.nombre), pop.fecha_modificacion DESC NULLS LAST, pop.id DESC
+      `,
+      [idVinculoProfesionalPerteneciente],
+    );
+  };
 }
 
 export default new AuthorizationRepository();
