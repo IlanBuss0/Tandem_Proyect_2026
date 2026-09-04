@@ -89,6 +89,7 @@ import TipoNotificacionController from './controllers/TipoNotificacionController
 import TipoPermisoArchivoController from './controllers/TipoPermisoArchivoController.js';
 import TipoUsuarioController from './controllers/TipoUsuarioController.js';
 import ValidacionProfesionalController from './controllers/ValidacionProfesionalController.js';
+import RefepsSearchController from './controllers/RefepsSearchController.js';
 import VinculoProfesionalPertenecienteController from './controllers/VinculoProfesionalPertenecienteController.js';
 import VinculoTutorPertenecienteController from './controllers/VinculoTutorPertenecienteController.js';
 import { authMiddleware, verifiedAccountMiddleware } from './middlewares/auth.middleware.js';
@@ -162,11 +163,13 @@ app.get('/docs', (req, res) => {
 app.use('/api/auth/login', authRateLimiter);
 app.use('/api/auth/register', authRateLimiter);
 app.use('/api/auth/google', authRateLimiter);
+app.use('/api/auth/verify-professional-dni', authRateLimiter);
 app.use('/api/auth/refresh', refreshRateLimiter);
 app.use('/api/auth/resend-verification', resendVerificationRateLimiter);
 app.use('/api/auth/forgot-password', resendVerificationRateLimiter);
 app.use('/api/auth/reset-password', authRateLimiter);
 app.use('/api/auth', AuthController);
+app.use('/api/refeps', authRateLimiter, RefepsSearchController);
 app.use('/api/pictograms', PictogramaController);
 app.use('/api/pictogramas', PictogramaController);
 app.use('/pictograms', PictogramaController);

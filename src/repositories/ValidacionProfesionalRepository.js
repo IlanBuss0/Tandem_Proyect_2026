@@ -59,4 +59,28 @@ export default class ValidacionProfesionalRepository {
       `,
     );
   };
+
+  createAutomatedResultAsync = async (entity) => BD.transaction(async (client) => {
+    const stateResult = await client.query(
+      `SELECT id FROM estados_validaciones_profesionales WHERE UPPER(REPLACE(nombre, ' ', '_')) = $1 LIMIT 1`,
+      [entity.profile_status],
+    );
+    const state = stateResult.rows[0];
+    if (!state?.id) throw new Error(`Estado de validacion no configurado: ${entity.profile_status}`);
+
+    const result = await client.query(`
+      INSERT INTO validaciones_profesionales (
+        id_profesional, numero_matricula, titulo_profesional, documento_dni_url,
+        id_estado_validacion, observacion, fecha_validacion, fuente,
+        profesion_refeps, jurisdiccion_refeps, metodo_verificacion, resultado_automatico
+      ) VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING id
+    `, [
+      entity.id_profesional, entity.numero_matricula, entity.profesion, state.id,
+      entity.observacion, entity.fecha_validacion, entity.source, entity.profesion,
+      entity.jurisdiccion, entity.verification_method, entity.status,
+    ]);
+    await client.query('UPDATE profesionales SET id_estado_validacion = $2 WHERE id = $1', [entity.id_profesional, state.id]);
+    return result.rows[0]?.id ?? 0;
+  });
 }

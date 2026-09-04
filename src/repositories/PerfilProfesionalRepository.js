@@ -47,7 +47,7 @@ export default class PerfilProfesionalRepository {
     INNER JOIN usuarios u ON u.id = p.id_usuario AND u.activo = TRUE
     INNER JOIN estados_validaciones_profesionales ev ON ev.id = p.id_estado_validacion
     WHERE pf.visible_en_tienda = TRUE
-      AND LOWER(ev.nombre) IN ('validado', 'aprobado', 'verificado')
+      AND LOWER(ev.nombre) IN ('verified', 'validado', 'aprobado', 'verificado', 'verificada')
     ORDER BY u.apellido NULLS LAST, u.nombre NULLS LAST
   `);
 }
