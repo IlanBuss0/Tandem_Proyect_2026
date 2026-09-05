@@ -36,6 +36,16 @@ export default class ArchivoRepository {
     return await BD.queryOne(sql, [id]);
   };
 
+  getByIdsAsync = async (ids) => {
+    console.log(`ArchivoRepository.getByIdsAsync(${ids?.length ?? 0})`);
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    await this.ensureMetadataColumnsAsync();
+    const sql = this.metadataColumnsReady
+      ? `SELECT id, id_usuario_creador, id_tipo_archivo, nombre_archivo, url, content_type, peso_bytes, fecha_subida, activo FROM archivos WHERE id = ANY($1::int[])`
+      : `SELECT id, id_usuario_creador, id_tipo_archivo, nombre_archivo, url, fecha_subida, activo FROM archivos WHERE id = ANY($1::int[])`;
+    return await BD.query(sql, [ids]);
+  };
+
   createAsync = async (entity) => {
     console.log(`ArchivoRepository.createAsync(${JSON.stringify(entity)})`);
     await this.ensureMetadataColumnsAsync();

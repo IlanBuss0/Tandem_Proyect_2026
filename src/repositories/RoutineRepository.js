@@ -75,32 +75,54 @@ export default class RoutineRepository {
   replaceAllForUsuarioAsync = async (idUsuario, routines) => {
     return await BD.transaction(async (client) => {
       await client.query(`DELETE FROM rutinas WHERE id_usuario = $1`, [idUsuario]);
+      if (routines.length === 0) return;
 
-      for (const routine of routines) {
-        await client.query(
-          `INSERT INTO rutinas (id, id_usuario, nombre, dia_semana, fecha) VALUES ($1,$2,$3,$4,$5)`,
-          [routine.id, idUsuario, routine.nombre, routine.dia_semana ?? null, routine.fecha ?? null],
+      // 1 INSERT masivo con todas las rutinas (antes: 1 INSERT por rutina).
+      const routineValues = [];
+      const routinePlaceholders = routines.map((routine, index) => {
+        const base = index * 5;
+        routineValues.push(
+          routine.id, idUsuario, routine.nombre, routine.dia_semana ?? null, routine.fecha ?? null,
         );
-        let orden = 0;
-        for (const item of routine.items || []) {
-          await client.query(
-            `
-              INSERT INTO rutina_items (
-                id, id_rutina, orden, hora, titulo, icono, categoria, completado, reminders,
-                id_pictograma, pictograma_url, pictograma_nombre, pictograma_confianza,
-                pictograma_resuelto_para, pictograma_label
-              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-            `,
-            [
-              item.id, routine.id, orden, item.hora, item.titulo, item.icono || null,
-              item.categoria || null, Boolean(item.completado), item.reminders ? JSON.stringify(item.reminders) : null,
-              item.id_pictograma || null, item.pictograma_url || null, item.pictograma_nombre || null,
-              item.pictograma_confianza || null, item.pictograma_resuelto_para || null, item.pictograma_label || null,
-            ],
-          );
-          orden += 1;
-        }
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
+      });
+      await client.query(
+        `INSERT INTO rutinas (id, id_usuario, nombre, dia_semana, fecha) VALUES ${routinePlaceholders.join(', ')}`,
+        routineValues,
+      );
+
+      // 1 INSERT masivo con los items de todas las rutinas (antes: 1 INSERT
+      // por item). El `orden` sigue siendo el indice del item dentro de su
+      // rutina, item por item, igual que antes.
+      const flatItems = [];
+      for (const routine of routines) {
+        (routine.items || []).forEach((item, orden) => {
+          flatItems.push({ item, idRutina: routine.id, orden });
+        });
       }
+      if (flatItems.length === 0) return;
+
+      const itemValues = [];
+      const itemPlaceholders = flatItems.map(({ item, idRutina, orden }, index) => {
+        const base = index * 15;
+        itemValues.push(
+          item.id, idRutina, orden, item.hora, item.titulo, item.icono || null,
+          item.categoria || null, Boolean(item.completado), item.reminders ? JSON.stringify(item.reminders) : null,
+          item.id_pictograma || null, item.pictograma_url || null, item.pictograma_nombre || null,
+          item.pictograma_confianza || null, item.pictograma_resuelto_para || null, item.pictograma_label || null,
+        );
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15})`;
+      });
+      await client.query(
+        `
+          INSERT INTO rutina_items (
+            id, id_rutina, orden, hora, titulo, icono, categoria, completado, reminders,
+            id_pictograma, pictograma_url, pictograma_nombre, pictograma_confianza,
+            pictograma_resuelto_para, pictograma_label
+          ) VALUES ${itemPlaceholders.join(', ')}
+        `,
+        itemValues,
+      );
     });
   };
 

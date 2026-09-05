@@ -51,6 +51,17 @@ router.get('', async (req, res) => {
   }
 });
 
+router.get('/usuario/:idUsuario', async (req, res) => {
+  try {
+    const idUsuario = parseInt(req.params.idUsuario);
+    const returnEntity = await currentService.getByUsuarioIdPublicAsync(idUsuario);
+    if (returnEntity != null) return res.status(StatusCodes.OK).json(returnEntity);
+    return res.status(StatusCodes.NOT_FOUND).send(`No se encontro el profesional del usuario con id: ${idUsuario}.`);
+  } catch (error) {
+    return sendError(res, error, StatusCodes.BAD_REQUEST);
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);

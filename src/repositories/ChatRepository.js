@@ -175,60 +175,39 @@ export default class ChatRepository {
   replaceParticipantsAsync = async (idChat, participantIds, adminIds = [], fecha = new Date()) => {
     await this.ensureDescriptionColumnAsync();
     return await BD.transaction(async (client) => {
-      for (const idUsuario of participantIds) {
-        const existing = await client.query(
-          `SELECT id FROM participantes_chats WHERE id_chat = $1 AND id_usuario = $2 LIMIT 1`,
-          [idChat, idUsuario],
+      if (participantIds.length > 0) {
+        // Resuelve todos los participantes entrantes en 1 query (antes: 1
+        // SELECT + 1 UPDATE/INSERT por participante). participantes_chats
+        // tiene UNIQUE (id_chat, id_usuario), asi que ON CONFLICT hace de
+        // "existe? -> UPDATE : INSERT". Se preserva la logica de re-ingreso:
+        //  - alta nueva            -> oculto_desde = inicio de los ultimos ~5 mensajes
+        //  - ya estaba adentro     -> oculto_desde = null (ve todo el historial)
+        //  - vuelve tras abandonar -> oculto_desde = inicio de los ultimos ~5 mensajes
+        await client.query(
+          `
+            INSERT INTO participantes_chats (id_chat, id_usuario, fecha_ingreso, fecha_salida, oculto_desde, es_admin)
+            SELECT $1, entrante.id_usuario, $3, null, ultimos.oculto_desde, entrante.id_usuario = ANY($4::int[])
+            FROM unnest($2::int[]) AS entrante(id_usuario)
+            CROSS JOIN (
+              SELECT MIN(fecha_envio) AS oculto_desde
+              FROM (
+                SELECT fecha_envio
+                FROM mensajes
+                WHERE id_chat = $1 AND eliminado = false
+                ORDER BY id DESC
+                LIMIT 5
+              ) ultimos
+            ) AS ultimos
+            ON CONFLICT (id_chat, id_usuario) DO UPDATE
+            SET fecha_salida = null,
+                oculto_desde = CASE
+                  WHEN participantes_chats.fecha_salida IS NULL THEN null
+                  ELSE EXCLUDED.oculto_desde
+                END,
+                es_admin = EXCLUDED.es_admin
+          `,
+          [idChat, participantIds, fecha, adminIds],
         );
-
-        if (existing.rows[0]?.id) {
-          await client.query(
-            `
-              UPDATE participantes_chats
-              SET fecha_salida = null,
-                  oculto_desde = CASE
-                    WHEN fecha_salida IS NULL THEN null
-                    ELSE (
-                      SELECT MIN(fecha_envio)
-                      FROM (
-                        SELECT fecha_envio
-                        FROM mensajes
-                        WHERE id_chat = $2 AND eliminado = false
-                        ORDER BY id DESC
-                        LIMIT 5
-                      ) ultimos
-                    )
-                  END,
-                  es_admin = $3
-              WHERE id = $1
-            `,
-            [existing.rows[0].id, idChat, adminIds.includes(idUsuario)],
-          );
-        } else {
-          await client.query(
-            `
-              INSERT INTO participantes_chats (id_chat, id_usuario, fecha_ingreso, fecha_salida, oculto_desde, es_admin)
-              VALUES (
-                $1,
-                $2,
-                $3,
-                null,
-                (
-                  SELECT MIN(fecha_envio)
-                  FROM (
-                    SELECT fecha_envio
-                    FROM mensajes
-                    WHERE id_chat = $1 AND eliminado = false
-                    ORDER BY id DESC
-                    LIMIT 5
-                  ) ultimos
-                ),
-                $4
-              )
-            `,
-            [idChat, idUsuario, fecha, adminIds.includes(idUsuario)],
-          );
-        }
       }
 
       await client.query(
@@ -259,10 +238,17 @@ export default class ChatRepository {
 
       const chat = chatResult.rows[0];
 
-      for (const idUsuario of participantes) {
+      if (participantes.length > 0) {
+        // 1 INSERT con todos los participantes (antes: 1 INSERT por participante).
+        const values = [];
+        const placeholders = participantes.map((idUsuario, index) => {
+          const base = index * 4;
+          values.push(chat.id, idUsuario, fecha_creacion, administradores.includes(idUsuario));
+          return `($${base + 1}, $${base + 2}, $${base + 3}, null, null, $${base + 4})`;
+        });
         await client.query(
-          `INSERT INTO participantes_chats (id_chat, id_usuario, fecha_ingreso, fecha_salida, oculto_desde, es_admin) VALUES ($1, $2, $3, null, null, $4)`,
-          [chat.id, idUsuario, fecha_creacion, administradores.includes(idUsuario)],
+          `INSERT INTO participantes_chats (id_chat, id_usuario, fecha_ingreso, fecha_salida, oculto_desde, es_admin) VALUES ${placeholders.join(', ')}`,
+          values,
         );
       }
 
