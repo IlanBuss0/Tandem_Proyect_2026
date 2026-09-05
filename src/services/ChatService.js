@@ -78,10 +78,7 @@ export default class ChatService {
       throw new Error('Un grupo necesita al menos 3 participantes incluyendo al creador.');
     }
 
-    for (const idUsuario of participantIds) {
-      const usuario = await this.UsuarioRepository.getByIdAsync(idUsuario);
-      if (!usuario?.activo) throw new Error(`El usuario ${idUsuario} no existe o no esta activo.`);
-    }
+    await this.assertUsuariosActivosAsync(participantIds);
 
     const idTipoChat = id_tipo_chat ? parseInt(id_tipo_chat) : await this.resolveTipoChatGrupoAsync();
     const chat = await this.ChatRepository.createWithParticipantsAsync({
@@ -173,11 +170,7 @@ export default class ChatService {
     if (adminIds.length < 1) throw new Error('El grupo necesita al menos un administrador.');
 
     if (Array.isArray(payload?.participantes) || Array.isArray(payload?.administradores)) {
-      for (const idParticipante of participantIds) {
-        const usuario = await this.UsuarioRepository.getByIdAsync(idParticipante);
-        if (!usuario?.activo) throw new Error(`El usuario ${idParticipante} no existe o no esta activo.`);
-      }
-
+      await this.assertUsuariosActivosAsync(participantIds);
       await this.ChatRepository.replaceParticipantsAsync(idChat, participantIds, adminIds);
     }
 
@@ -243,6 +236,18 @@ export default class ChatService {
     if (!entity) throw new Error('El chat es obligatorio.');
     if (!entity.id_tipo_chat) throw new Error('id_tipo_chat es obligatorio.');
     if (!entity.fecha_creacion) throw new Error('fecha_creacion es obligatorio.');
+  };
+
+  // Valida en 1 query que todos los ids sean usuarios existentes y activos
+  // (antes: 1 getByIdAsync por participante, en loop).
+  assertUsuariosActivosAsync = async (idsUsuario) => {
+    const usuarios = await this.UsuarioRepository.getByIdsAsync(idsUsuario);
+    const usuarioById = new Map(usuarios.map((usuario) => [Number(usuario.id), usuario]));
+    for (const idUsuario of idsUsuario) {
+      if (!usuarioById.get(Number(idUsuario))?.activo) {
+        throw new Error(`El usuario ${idUsuario} no existe o no esta activo.`);
+      }
+    }
   };
 
   validarChatDirectoAsync = async (idUsuarioA, idUsuarioB, idTipoChat, options = {}) => {

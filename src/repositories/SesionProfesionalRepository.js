@@ -74,36 +74,41 @@ export default class SesionProfesionalRepository {
   /** Inserta varias sesiones (ej. una serie recurrente) en una sola transaccion: si una falla, no queda ninguna a medias. */
   createManyAsync = async (entities) => {
     console.log(`SesionProfesionalRepository.createManyAsync(${entities.length} sesiones)`);
+    if (entities.length === 0) return [];
+
+    // 1 INSERT masivo con todas las ocurrencias (antes: 1 INSERT por sesion).
+    const columnsPerRow = 12;
+    const values = [];
+    const placeholders = entities.map((entity, index) => {
+      const base = index * columnsPerRow;
+      values.push(
+        entity?.id_profesional,
+        entity?.id_perteneciente,
+        entity?.fecha_sesion,
+        entity?.titulo ?? 'Sesion profesional',
+        entity?.duracion_minutos ?? 60,
+        entity?.estado ?? 'programada',
+        JSON.stringify(entity?.recordatorios ?? []),
+        entity?.legacy_calendar_event_id ?? null,
+        entity?.recurrence_group_id ?? null,
+        entity?.recurrence_rule ? JSON.stringify(entity.recurrence_rule) : null,
+        entity?.recurrence_index ?? 0,
+        entity?.motivo_cancelacion ?? null,
+      );
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}::jsonb, $${base + 8}, $${base + 9}, $${base + 10}::jsonb, $${base + 11}, $${base + 12})`;
+    });
     const sql = `
       INSERT INTO sesiones_profesionales (
         id_profesional, id_perteneciente, fecha_sesion, titulo, duracion_minutos, estado,
         recordatorios, legacy_calendar_event_id, recurrence_group_id, recurrence_rule, recurrence_index,
         motivo_cancelacion
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10::jsonb, $11, $12)
+      VALUES ${placeholders.join(', ')}
       RETURNING id
     `;
     return await BD.transaction(async (client) => {
-      const ids = [];
-      for (const entity of entities) {
-        const values = [
-          entity?.id_profesional,
-          entity?.id_perteneciente,
-          entity?.fecha_sesion,
-          entity?.titulo ?? 'Sesion profesional',
-          entity?.duracion_minutos ?? 60,
-          entity?.estado ?? 'programada',
-          JSON.stringify(entity?.recordatorios ?? []),
-          entity?.legacy_calendar_event_id ?? null,
-          entity?.recurrence_group_id ?? null,
-          entity?.recurrence_rule ? JSON.stringify(entity.recurrence_rule) : null,
-          entity?.recurrence_index ?? 0,
-          entity?.motivo_cancelacion ?? null,
-        ];
-        const result = await client.query(sql, values);
-        ids.push(result.rows[0]?.id ?? 0);
-      }
-      return ids;
+      const result = await client.query(sql, values);
+      return result.rows.map((row) => row.id ?? 0);
     });
   };
 

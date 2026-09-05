@@ -22,6 +22,14 @@ export default class TutorService {
     return returnEntity;
   };
 
+  getByUsuarioIdAsync = async (idUsuario) => {
+    console.log(`TutorService.getByUsuarioIdAsync(${idUsuario})`);
+    if (!idUsuario || Number.isNaN(idUsuario)) {
+      throw new Error('El id del usuario es invalido.');
+    }
+    return await this.TutorRepository.getByUsuarioIdAsync(idUsuario);
+  };
+
   createAsync = async (entity) => {
     console.log(`TutorService.createAsync(${JSON.stringify(entity)})`);
     this.validarTutorParaCrear(entity);

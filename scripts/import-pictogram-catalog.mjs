@@ -85,6 +85,9 @@ async function rehostImage(pictogram, fileStorage) {
     userId: 'system', // requerido por FileStorageService, no se usa porque se pasa `path` explicito
     path: storagePath,
     upsert: true,
+    // Se re-sube con upsert cuando cambia el arte original: 30 dias en vez
+    // del default de 1 anio immutable de FileStorageService.
+    cacheControl: 'public, max-age=2592000',
   });
 
   return { ...pictogram, imageUrl: uploaded.url, downloadUrl: uploaded.url };

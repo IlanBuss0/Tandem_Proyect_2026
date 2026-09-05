@@ -44,12 +44,9 @@ export default class MensajeService {
     const message = await this.MensajeRepository.getByIdAsync(newId);
 
     if (attachmentIds.length > 0) {
-      for (const idArchivo of attachmentIds) {
-        await this.MensajeArchivoRepository.createAsync({
-          id_mensaje: message.id,
-          id_archivo: idArchivo,
-        });
-      }
+      await this.MensajeArchivoRepository.createManyAsync(
+        attachmentIds.map((idArchivo) => ({ id_mensaje: message.id, id_archivo: idArchivo })),
+      );
 
       message._archivos_ids = attachmentIds;
     }
@@ -69,21 +66,32 @@ export default class MensajeService {
       throw error;
     }
 
+    // 1 query trae todos los archivos (antes: 1 getByIdAsync por archivo).
+    const archivos = await this.ArchivoRepository.getByIdsAsync(uniqueIds);
+    const archivoById = new Map(archivos.map((archivo) => [Number(archivo.id), archivo]));
+
     for (const idArchivo of uniqueIds) {
-      const archivo = await this.ArchivoRepository.getByIdAsync(idArchivo);
+      const archivo = archivoById.get(idArchivo);
       if (!archivo || archivo.activo === false) {
         const error = new Error(`El archivo ${idArchivo} no existe o no esta activo.`);
         error.statusCode = 403;
         throw error;
       }
+    }
 
-      if (archivo.id_usuario_creador === idUsuario) continue;
-
-      const hasPermission = await this.PermisoArchivoRepository.hasAccessForUserOrChatAsync(idArchivo, idUsuario, idChat);
-      if (!hasPermission) {
-        const error = new Error(`No tenes permiso para adjuntar el archivo ${idArchivo}.`);
-        error.statusCode = 403;
-        throw error;
+    // 1 query resuelve los permisos de todos los archivos ajenos (antes: 1
+    // hasAccessForUserOrChatAsync por archivo).
+    const idsAjenos = uniqueIds.filter((idArchivo) => archivoById.get(idArchivo).id_usuario_creador !== idUsuario);
+    if (idsAjenos.length > 0) {
+      const idsConAcceso = new Set(
+        await this.PermisoArchivoRepository.filterAccessibleForUserOrChatAsync(idsAjenos, idUsuario, idChat),
+      );
+      for (const idArchivo of idsAjenos) {
+        if (!idsConAcceso.has(idArchivo)) {
+          const error = new Error(`No tenes permiso para adjuntar el archivo ${idArchivo}.`);
+          error.statusCode = 403;
+          throw error;
+        }
       }
     }
 
