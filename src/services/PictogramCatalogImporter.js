@@ -107,6 +107,9 @@ export default class PictogramCatalogImporter {
           userId: 'system',
           path: `${storagePrefix}/${fileName}`,
           upsert: true,
+          // Se re-sube con upsert cuando cambia el arte original (poco
+          // frecuente), asi que 30 dias en vez del default de 1 anio immutable.
+          cacheControl: 'public, max-age=2592000',
         });
 
         ready.push({ ...pictogram, imageUrl: url, downloadUrl: url, assetHash });

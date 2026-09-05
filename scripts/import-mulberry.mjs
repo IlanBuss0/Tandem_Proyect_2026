@@ -120,6 +120,9 @@ async function main() {
         userId: 'system',
         path: `${STORAGE_PREFIX}/${fileName}`,
         upsert: true,
+        // Se re-sube con upsert cuando cambia el arte original: 30 dias en
+        // vez del default de 1 anio immutable de FileStorageService.
+        cacheControl: 'public, max-age=2592000',
       });
 
       ready.push({ ...pictogram, imageUrl: url, downloadUrl: url, assetHash });
