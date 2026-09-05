@@ -1,8 +1,5 @@
 import axios from 'axios';
-import https from 'https';
 import { envConfig } from '../configs/env.config.js';
-
-const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 const DEFAULT_APPEARANCE = {
   genero: 'neutral',
@@ -193,7 +190,6 @@ export default class AvatarImageStorageService {
 
     const sourceUrl = buildDiceBearPngUrl(entity);
     const imageResponse = await axios.get(sourceUrl, {
-      httpsAgent,
       responseType: 'arraybuffer',
       timeout: 30000,
       headers: {
@@ -215,12 +211,17 @@ export default class AvatarImageStorageService {
       `${envConfig.supabaseUrl.replace(/\/$/, '')}/storage/v1/object/${envConfig.supabaseAvatarBucket}/${path}`,
       Buffer.from(imageResponse.data),
       {
-        httpsAgent,
         timeout: 30000,
         headers: {
           apikey: envConfig.supabaseServiceRoleKey,
           Authorization: `Bearer ${envConfig.supabaseServiceRoleKey}`,
           'Content-Type': contentType,
+          // El path del avatar es fijo (pertenecientes/{id}/avatar-{avatarId}.png)
+          // y se pisa con x-upsert cada vez que la persona cambia su avatar. La
+          // URL publica que se devuelve lleva ?v={avatar_imagen_actualizada_en}
+          // (ver AvatarService), asi que el navegador vuelve a pedir la imagen
+          // cuando cambia aunque este marcada como immutable.
+          'cache-control': 'public, max-age=31536000, immutable',
           'x-upsert': 'true',
         },
       },

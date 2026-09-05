@@ -27,6 +27,16 @@ export default class ProfesionalService {
     return await this.ProfesionalRepository.getByUsuarioIdAsync(idUsuario);
   };
 
+  getByUsuarioIdPublicAsync = async (idUsuario) => {
+    console.log(`ProfesionalService.getByUsuarioIdPublicAsync(${idUsuario})`);
+
+    if (!idUsuario || Number.isNaN(idUsuario)) {
+      throw new AppError('El id del usuario es invalido.', 400);
+    }
+
+    return await this.ProfesionalRepository.getByUsuarioIdPublicAsync(idUsuario);
+  };
+
   createMineAsync = async (idUsuario, { profesion, especialidad = null, matricula, institucion = null } = {}) => {
     console.log(`ProfesionalService.createMineAsync(${idUsuario})`);
 

@@ -25,6 +25,20 @@ export default class MensajeArchivoRepository {
     return result?.id ?? 0;
   };
 
+  createManyAsync = async (entities) => {
+    console.log(`MensajeArchivoRepository.createManyAsync(${entities?.length ?? 0})`);
+    if (!Array.isArray(entities) || entities.length === 0) return [];
+    const values = [];
+    const placeholders = entities.map((entity, index) => {
+      const base = index * 2;
+      values.push(entity?.id_mensaje ?? null, entity?.id_archivo ?? null);
+      return `($${base + 1}, $${base + 2})`;
+    });
+    const sql = `INSERT INTO mensajes_archivos (id_mensaje, id_archivo) VALUES ${placeholders.join(', ')} RETURNING id`;
+    const rows = await BD.query(sql, values);
+    return rows.map((row) => row.id);
+  };
+
   updateAsync = async (entity) => {
     console.log(`MensajeArchivoRepository.updateAsync(${JSON.stringify(entity)})`);
     const id = entity.id;

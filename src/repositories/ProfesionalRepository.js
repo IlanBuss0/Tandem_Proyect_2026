@@ -35,6 +35,12 @@ export default class ProfesionalRepository {
     return await BD.queryOne(sql, [idUsuario]);
   };
 
+  getByUsuarioIdPublicAsync = async (idUsuario) => {
+    console.log(`ProfesionalRepository.getByUsuarioIdPublicAsync(${idUsuario})`);
+    const sql = `SELECT id, id_usuario, profesion, especialidad, institucion, id_estado_validacion FROM profesionales WHERE id_usuario = $1`;
+    return await BD.queryOne(sql, [idUsuario]);
+  };
+
   getByMatriculaAsync = async (matricula) => {
     console.log(`ProfesionalRepository.getByMatriculaAsync(${matricula})`);
     const sql = `SELECT id, id_usuario, profesion, especialidad, matricula, institucion, id_estado_validacion FROM profesionales WHERE matricula = $1`;

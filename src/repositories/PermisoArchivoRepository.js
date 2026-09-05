@@ -32,6 +32,24 @@ export default class PermisoArchivoRepository {
     return Boolean(await BD.queryOne(sql, [idArchivo, idUsuario, idChat]));
   };
 
+  // Version en lote de hasAccessForUserOrChatAsync: devuelve el subconjunto
+  // de idArchivos que tienen un permiso para este usuario o este chat.
+  filterAccessibleForUserOrChatAsync = async (idArchivos, idUsuario, idChat) => {
+    console.log(`PermisoArchivoRepository.filterAccessibleForUserOrChatAsync(${idArchivos?.length ?? 0}, ${idUsuario}, ${idChat})`);
+    if (!Array.isArray(idArchivos) || idArchivos.length === 0) return [];
+    const sql = `
+      SELECT DISTINCT id_archivo
+      FROM permisos_archivos
+      WHERE id_archivo = ANY($1::int[])
+        AND (
+          id_usuario = $2
+          OR id_chat = $3
+        )
+    `;
+    const rows = await BD.query(sql, [idArchivos, idUsuario, idChat]);
+    return rows.map((row) => row.id_archivo);
+  };
+
   createAsync = async (entity) => {
     console.log(`PermisoArchivoRepository.createAsync(${JSON.stringify(entity)})`);
     const sql = `INSERT INTO permisos_archivos (id_archivo, id_alcance_archivo, id_tipo_permiso_archivo, id_usuario, id_chat) VALUES ($1, $2, $3, $4, $5) RETURNING id`;

@@ -49,6 +49,29 @@ export default class UsuarioRepository {
     return await BD.queryOne(sql, [id]);
   };
 
+  getByIdsAsync = async (ids) => {
+    console.log(`UsuarioRepository.getByIdsAsync(${ids?.length ?? 0})`);
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+
+    const sql = `
+      SELECT
+        id,
+        id_tipo_usuario,
+        nombre_usuario,
+        nombre,
+        apellido,
+        correo,
+        telefono,
+        fecha_nacimiento,
+        fecha_ingreso,
+        activo
+      FROM usuarios
+      WHERE id = ANY($1::int[])
+    `;
+
+    return await BD.query(sql, [ids]);
+  };
+
   getByCorreoAsync = async (correo) => {
     console.log(`UsuarioRepository.getByCorreoAsync(${correo})`);
 

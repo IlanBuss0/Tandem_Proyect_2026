@@ -10,6 +10,11 @@ import AppError from '../modules/errors/AppError.js';
 import { envConfig } from '../configs/env.config.js';
 import { falImageProvider, pollinationsImageProvider } from '../providers/ai/aiProviders.js';
 
+// Los pictogramas de IA se suben con upsert:true y su arte puede volver a
+// generarse (revisiones, re-sync), asi que no se cachean "para siempre":
+// 30 dias, igual que el intervalo de re-sync del catalogo (PICTOGRAM_SYNC_INTERVAL_DAYS).
+const PICTOGRAM_CACHE_CONTROL = 'public, max-age=2592000';
+
 const QUICK_MODEL = 'fal-ai/flux/schnell';
 const FINAL_MODEL = 'fal-ai/flux-2-pro';
 const FINAL_EDIT_MODEL = 'fal-ai/flux-2-pro/edit';
@@ -121,7 +126,7 @@ function keywordSymbol(text) {
 async function createLocalPictogramBuffer({ name, description }) {
   const symbol = keywordSymbol(`${name} ${description}`);
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+    <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 1024 1024">
       <rect width="1024" height="1024" fill="#ffffff"/>
       <circle cx="512" cy="512" r="356" fill="#f7f8fb" stroke="#1f2937" stroke-width="28"/>
       <path d="${symbol.icon}" fill="${symbol.color}" stroke="#1f2937" stroke-width="18" stroke-linejoin="round"/>
@@ -196,6 +201,7 @@ export default class AiPictogramService {
         const stored = await this.storage.uploadAsync({
           buffer, contentType: 'image/png', fileName: 'reference.png', userId,
           path: `pictograms-ai/temp/${generationId}/reference.png`, upsert: true,
+          cacheControl: PICTOGRAM_CACHE_CONTROL,
         });
         return { type: 'upload', url: stored.url, path: stored.path };
       } catch (error) {
@@ -229,14 +235,14 @@ export default class AiPictogramService {
       try {
         const result = await this.callFalAsync({ model, prompt, referenceUrls });
         const downloaded = await axios.get(result.image.url, { responseType: 'arraybuffer', timeout: 60000 });
-        imageBuffer = await sharp(Buffer.from(downloaded.data)).resize(1024, 1024, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer();
+        imageBuffer = await sharp(Buffer.from(downloaded.data)).resize(512, 512, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer();
         providerRequestId = result.requestId;
         seed = result.seed;
       } catch (falError) {
         console.warn('Fal AI failed. Falling back to Pollinations AI...', getTechnicalErrorDetails(falError));
         try {
           const rawBuffer = await this.callPollinationsAsync({ prompt, referenceUrls });
-          imageBuffer = await sharp(rawBuffer).resize(1024, 1024, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer();
+          imageBuffer = await sharp(rawBuffer).resize(512, 512, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer();
         } catch (pollinationsError) {
           console.warn('Pollinations failed. Falling back to local pictogram...', getTechnicalErrorDetails(pollinationsError));
           imageBuffer = await createLocalPictogramBuffer({ name, description });
@@ -245,7 +251,7 @@ export default class AiPictogramService {
     } else {
       try {
         const rawBuffer = await this.callPollinationsAsync({ prompt, referenceUrls });
-        imageBuffer = await sharp(rawBuffer).resize(1024, 1024, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer();
+        imageBuffer = await sharp(rawBuffer).resize(512, 512, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer();
       } catch (pollinationsError) {
         console.warn('Pollinations failed. Falling back to local pictogram...', getTechnicalErrorDetails(pollinationsError));
         imageBuffer = await createLocalPictogramBuffer({ name, description });
@@ -307,6 +313,7 @@ export default class AiPictogramService {
         stored = await this.storage.uploadAsync({
           buffer: imageBuffer, contentType: 'image/png', fileName: `${id}.png`, userId,
           path: `pictograms-ai/previews/${id}.png`, upsert: true,
+          cacheControl: PICTOGRAM_CACHE_CONTROL,
         });
       } catch (error) {
         const providerError = getProviderError(error);
@@ -382,6 +389,7 @@ export default class AiPictogramService {
         userId,
         path: `pictograms-ai/previews/${id}-${Date.now()}.png`,
         upsert: true,
+        cacheControl: PICTOGRAM_CACHE_CONTROL,
       });
     } catch (error) {
       const providerError = getProviderError(error);

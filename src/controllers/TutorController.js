@@ -17,6 +17,17 @@ router.get('', async (req, res) => {
   }
 });
 
+router.get('/usuario/:idUsuario', async (req, res) => {
+  try {
+    const idUsuario = parseInt(req.params.idUsuario);
+    const returnEntity = await currentService.getByUsuarioIdAsync(idUsuario);
+    if (returnEntity != null) res.status(StatusCodes.OK).json(returnEntity);
+    else res.status(StatusCodes.NOT_FOUND).send(`No se encontro el tutor del usuario con id: ${idUsuario}.`);
+  } catch (error) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).send(`Error: ${error.message}`);
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
