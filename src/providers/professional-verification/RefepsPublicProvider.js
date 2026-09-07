@@ -1,5 +1,8 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import SisaConstanciaProvider from './SisaConstanciaProvider.js';
+import RefepsConstanciaExtractionService, { dniFromCuil } from '../../services/RefepsConstanciaExtractionService.js';
+import { namesMatch, normalizeDocument, normalizeIdentityText } from '../../modules/professional-verification/name-normalization.js';
 
 const DEFAULT_URL = 'https://www.argentina.gob.ar/salud/buscador-nacional-de-profesionales-de-la-salud';
 
@@ -17,6 +20,33 @@ export default class RefepsPublicProvider {
     this.url = url;
     this.timeout = timeout;
     this.retries = retries;
+    this.constancias = new SisaConstanciaProvider({ http, timeout: Math.max(timeout, 15000) });
+    this.constanciaExtractor = new RefepsConstanciaExtractionService();
+  }
+
+  async obtenerConstancia({ matricula, dni, jurisdiccion } = {}) {
+    const document = normalizeDocument(dni);
+    if (!/^\d{4,}$/.test(String(matricula || '')) || !/^\d{7,8}$/.test(document) || !jurisdiccion) {
+      throw new RefepsProviderError('Seleccioná un registro profesional válido.', 'INVALID_SELECTION');
+    }
+    const search = await this.buscarPorMatricula(matricula);
+    const candidates = search.results.filter(item => normalizeDocument(item.dni) === document
+      && normalizeIdentityText(item.jurisdiccion) === normalizeIdentityText(jurisdiccion));
+    if (candidates.length !== 1) throw new RefepsProviderError('No pudimos identificar el registro seleccionado.', 'INVALID_SELECTION');
+    const candidate = candidates[0];
+    const pdf = await this.constancias.downloadAsync(document);
+    const official = await this.constanciaExtractor.extractAsync(pdf, candidate);
+    if (official.dni !== document || !namesMatch(official.nombre, candidate.nombre) || !namesMatch(official.apellido, candidate.apellido)) {
+      throw new RefepsProviderError('Los datos oficiales no coinciden entre las fuentes.', 'OFFICIAL_DATA_MISMATCH');
+    }
+    // The CUIL and auxiliary personal fields are used internally, never sent to the client.
+    return {
+      nombre: official.nombre, apellido: official.apellido, dni: official.dni,
+      matricula: official.matricula, profesion: official.profesion,
+      jurisdiccion: official.jurisdiccion, habilitado: official.habilitado && candidate.habilitado,
+      estado: official.estado, especialidades: official.especialidades,
+      titulo: official.formacion[0]?.['Título'] || null, source: official.source,
+    };
   }
 
   buscarPorMatricula = async (numeroMatricula) => {
@@ -89,7 +119,7 @@ export default class RefepsPublicProvider {
       (profesion.matriculas || []).filter(record => criterio?.searchBy === 'dni' ? matches(item.nroDoc) : matches(record.matricula)).map(record => ({
         nombre: item.nombre || null,
         apellido: item.apellido || null,
-        dni: item.nroDoc || null,
+        dni: item.nroDoc || dniFromCuil(item.cuil) || null,
         matricula: record.matricula,
         profesion: profesion.profesionReferencia || null,
         jurisdiccion: record.provinciaMatricula || null,

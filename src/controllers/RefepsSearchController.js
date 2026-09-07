@@ -5,6 +5,20 @@ import RefepsPublicProvider from '../providers/professional-verification/RefepsP
 const router = Router();
 const refepsProvider = new RefepsPublicProvider();
 
+router.post('/constancia', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const data = await refepsProvider.obtenerConstancia(req.body);
+    return res.status(StatusCodes.OK).json({ ok: true, data });
+  } catch (error) {
+    const invalid = error.code === 'INVALID_SELECTION';
+    return res.status(invalid ? StatusCodes.BAD_REQUEST : StatusCodes.BAD_GATEWAY).json({
+      ok: false, code: error.code || 'CONSTANCIA_UNAVAILABLE',
+      error: invalid ? 'Seleccioná nuevamente tu registro profesional.' : 'No pudimos obtener una constancia válida de REFEPS. Intentá nuevamente.',
+    });
+  }
+});
+
 router.post('/search-refeps', async (req, res) => {
   try {
     const matricula = String(req.body?.matricula || '').trim();

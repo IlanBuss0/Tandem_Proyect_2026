@@ -6,7 +6,8 @@ export default class ProfessionalIdentityMatcher {
     const sameIdentity = sameMatricula.filter(item =>
       namesMatch(dniData.nombre, item.nombre)
       && namesMatch(dniData.apellido, item.apellido)
-      && (!item.dni || normalizeDocument(item.dni) === normalizeDocument(dniData.dni)));
+      && /^\d{7,8}$/.test(normalizeDocument(item.dni))
+      && normalizeDocument(item.dni) === normalizeDocument(dniData.dni));
     return {
       matched: sameIdentity.length === 1,
       ambiguous: sameIdentity.length > 1,
