@@ -5,7 +5,7 @@ import PictogramaService from '../services/PictogramaService.js';
 import AuthorizationService from '../services/AuthorizationService.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { csrfMiddleware } from '../middlewares/csrf.middleware.js';
-import { PERTENECIENTE_PERMISSIONS } from '../modules/security/permissions.constants.js';
+import { PERTENECIENTE_PERMISSIONS, PROFESIONAL_PERMISSIONS } from '../modules/security/permissions.constants.js';
 import AiPictogramService from '../services/AiPictogramService.js';
 import { upload } from '../middlewares/upload.middleware.js';
 import PictogramizationService, { MAX_PHRASES_PER_REQUEST } from '../services/PictogramizationService.js';
@@ -19,6 +19,8 @@ import { NUCLEO_VOCABULARIO, TABLEROS_SITUACIONALES } from '../modules/communica
 import { simplifyToLecturaFacilAsync, MAX_LECTURA_FACIL_CHARS } from '../modules/pictograms/lectura-facil.js';
 import MemoryProfileService from '../services/MemoryProfileService.js';
 import PertenecienteRepository from '../repositories/PertenecienteRepository.js';
+import AuthorizationRepository from '../repositories/AuthorizationRepository.js';
+import AppError from '../modules/errors/AppError.js';
 
 const router = Router();
 const currentService = new PictogramaService();
@@ -35,6 +37,39 @@ const authIfTargetPerteneciente = (req, res, next) => {
   const targetPertenecienteId = req.query.targetPertenecienteId || req.query.id_perteneciente_destino;
   if (targetPertenecienteId || req.query.boostForUsuarioId) return authMiddleware(req, res, next);
   return next();
+};
+
+// El ActivityBuilder manda en targetPertenecienteId los ids de USUARIO de
+// las personas seleccionadas (form.assignedToIds), mientras que el resto de
+// la app (AiPictogramStudio, /ai/targets) manda ids de perteneciente.
+// Ambos deben funcionar: se resuelve sobre el registro de perteneciente (las
+// dos interpretaciones) y se autoriza con el permiso profesional que rige el
+// flujo de creacion de actividades si quien pide es un profesional.
+const resolvePertenecienteForRead = async (req, rawId) => {
+  const raw = Number(rawId);
+  const asPerteneciente = await pertenecienteRepository.getByIdAsync(raw);
+  if (asPerteneciente) {
+    try {
+      await AuthorizationService.assertCanReadPertenecienteResource(
+        req.user.id,
+        asPerteneciente.id,
+        PROFESIONAL_PERMISSIONS.ASIGNAR_ACTIVIDADES,
+      );
+      return asPerteneciente.id;
+    } catch (error) {
+      if (error?.statusCode !== 403) throw error;
+    }
+  }
+  const byUsuario = await AuthorizationRepository.getPertenecienteByUsuarioId(raw);
+  if (byUsuario) {
+    await AuthorizationService.assertCanReadPertenecienteResource(
+      req.user.id,
+      byUsuario.id,
+      PROFESIONAL_PERMISSIONS.ASIGNAR_ACTIVIDADES,
+    );
+    return byUsuario.id;
+  }
+  throw new AppError('No autorizado para acceder a este recurso', 403);
 };
 
 router.get('/ai/targets', authMiddleware, async (req, res, next) => {
@@ -293,13 +328,17 @@ router.get('/tableros', authMiddleware, async (req, res, next) => {
 
 router.get('', authIfTargetPerteneciente, async (req, res, next) => {
   try {
-    const targetPertenecienteId = req.query.targetPertenecienteId || req.query.id_perteneciente_destino;
+    const rawTargetPertenecienteId = req.query.targetPertenecienteId || req.query.id_perteneciente_destino;
+    let targetPertenecienteId = rawTargetPertenecienteId;
     let targetIds = [];
-    if (targetPertenecienteId) {
-      targetIds = String(targetPertenecienteId).split(',').map(Number).filter(Boolean);
-      for (const targetId of targetIds) {
-        await AuthorizationService.assertCanReadPertenecienteResource(req.user.id, targetId);
+    if (rawTargetPertenecienteId) {
+      const rawIds = String(rawTargetPertenecienteId).split(',').map(Number).filter(Boolean);
+      const resolved = new Set();
+      for (const rawId of rawIds) {
+        resolved.add(await resolvePertenecienteForRead(req, rawId));
       }
+      targetIds = Array.from(resolved);
+      targetPertenecienteId = targetIds.join(',');
     }
 
     // Perfil de memoria (Sesion 25): solo tiene sentido personalizar cuando

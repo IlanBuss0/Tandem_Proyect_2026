@@ -342,6 +342,32 @@ class AuthorizationService {
     throw new AppError('No autorizado para modificar este recurso', 403);
   }
 
+  async assertCanCreateCustomActivity(idUsuario) {
+    const userContext = await this.getUserContext(idUsuario);
+    if (!userContext) throw new AppError('No autorizado', 403);
+
+    if (userContext.perteneciente?.id) {
+      return await this.assertCan(
+        idUsuario,
+        this.actionForPertenecientePermission(PERTENECIENTE_PERMISSIONS.CREAR_ACTIVIDADES_PROPIAS),
+        { id_perteneciente: userContext.perteneciente.id },
+      );
+    }
+
+    if (userContext.tutor?.id) {
+      return this.allow();
+    }
+
+    if (userContext.profesional?.id) {
+      const vinculos = await AuthorizationRepository.getApprovedProfessionalLinks(userContext.profesional.id);
+      const tieneVinculoAprobado = (vinculos || []).some((v) => this.isProfessionalLinkApproved(v));
+      if (tieneVinculoAprobado) return this.allow();
+      throw new AppError('No autorizado: no existe un vinculo profesional aprobado', 403);
+    }
+
+    throw new AppError('No autorizado para crear actividades', 403);
+  }
+
   async assertCanAccessDispositivoLocation(idUsuario, idDispositivo, mode = 'read') {
     const perteneciente = await AuthorizationRepository.getPertenecienteByDispositivoId(idDispositivo);
     if (!perteneciente?.usuario_activo) throw new AppError('Dispositivo no encontrado o inactivo', 404);

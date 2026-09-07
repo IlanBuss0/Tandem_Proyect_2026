@@ -56,20 +56,27 @@ export default class ActividadAsignadaRepository {
 
     const sql = `
       SELECT
-        id,
-        id_actividad,
-        id_actividad_personalizada,
-        id_perteneciente,
-        id_usuario_asignador,
-        id_estado_actividad,
-        fecha_asignacion,
-        fecha_completada,
-        puntaje_ultimo,
-        puntaje_mejor,
-        fecha_ultimo_intento
-      FROM actividades_asignadas
-      WHERE id_perteneciente = $1
-      ORDER BY id DESC
+        aa.id,
+        aa.id_actividad,
+        aa.id_actividad_personalizada,
+        aa.id_perteneciente,
+        aa.id_usuario_asignador,
+        aa.id_estado_actividad,
+        aa.fecha_asignacion,
+        aa.fecha_completada,
+        aa.puntaje_ultimo,
+        aa.puntaje_mejor,
+        aa.fecha_ultimo_intento,
+        TRIM(CONCAT(ua.nombre, ' ', ua.apellido)) AS asignador_nombre,
+        CASE
+          WHEN EXISTS (SELECT 1 FROM tutores t WHERE t.id_usuario = aa.id_usuario_asignador) THEN 'tutor'
+          WHEN EXISTS (SELECT 1 FROM profesionales p WHERE p.id_usuario = aa.id_usuario_asignador) THEN 'profesional'
+          ELSE 'app'
+        END AS asignador_rol
+      FROM actividades_asignadas aa
+      LEFT JOIN usuarios ua ON ua.id = aa.id_usuario_asignador
+      WHERE aa.id_perteneciente = $1
+      ORDER BY aa.id DESC
     `;
 
     return await BD.query(sql, [idPerteneciente]);

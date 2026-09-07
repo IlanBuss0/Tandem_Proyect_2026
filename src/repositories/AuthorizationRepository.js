@@ -365,6 +365,35 @@ class AuthorizationRepository {
     );
   };
 
+  getApprovedProfessionalLinks = async (idProfesional) => {
+    return await BD.query(
+      `
+        SELECT
+          vpp.id,
+          vpp.id_profesional,
+          vpp.id_perteneciente,
+          vpp.id_estado_vinculo,
+          ev.nombre AS estado_vinculo,
+          vpp.requiere_aprobacion_tutor,
+          vpp.fue_aprobado_por_tutor,
+          vpp.id_tutor_aprobador,
+          evp.nombre AS estado_validacion_profesional,
+          up.activo AS usuario_profesional_activo,
+          upe.activo AS usuario_perteneciente_activo
+        FROM vinculos_profesional_pertenecientes vpp
+        INNER JOIN estados_vinculos ev ON ev.id = vpp.id_estado_vinculo
+        INNER JOIN profesionales p ON p.id = vpp.id_profesional
+        INNER JOIN usuarios up ON up.id = p.id_usuario
+        INNER JOIN pertenecientes pe ON pe.id = vpp.id_perteneciente
+        INNER JOIN usuarios upe ON upe.id = pe.id_usuario
+        LEFT JOIN estados_validaciones_profesionales evp ON evp.id = p.id_estado_validacion
+        WHERE vpp.id_profesional = $1
+        ORDER BY vpp.id DESC
+      `,
+      [idProfesional],
+    );
+  };
+
   getUsuarioIdByPertenecienteId = async (idPerteneciente) => {
     const row = await BD.queryOne(
       `

@@ -5,7 +5,7 @@ import ActividadPersonalizadaService from '../services/ActividadPersonalizadaSer
 import ActividadPersonalizada from '../entities/ActividadPersonalizada.js';
 import AuthorizationService from '../services/AuthorizationService.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
-import { PERTENECIENTE_PERMISSIONS, PROFESIONAL_PERMISSIONS } from '../modules/security/permissions.constants.js';
+import { PROFESIONAL_PERMISSIONS } from '../modules/security/permissions.constants.js';
 
 const router = Router();
 const currentService = new ActividadPersonalizadaService();
@@ -80,13 +80,7 @@ router.post('', async (req, res) => {
     console.log('ActividadPersonalizadaController.create');
 
     const entity = new ActividadPersonalizada(req.body);
-    const context = await AuthorizationService.getUserContext(req.user.id);
-    if (context?.perteneciente?.id) {
-      await AuthorizationService.assertCanWritePertenecienteResource(req.user.id, context.perteneciente.id, {
-        pertenecientePermissionName: PERTENECIENTE_PERMISSIONS.CREAR_ACTIVIDADES_PROPIAS,
-        allowTutor: false,
-      });
-    }
+    await AuthorizationService.assertCanCreateCustomActivity(req.user.id);
     entity.id_usuario_creador = req.user.id;
 
     const newId = await currentService.createAsync(entity);
