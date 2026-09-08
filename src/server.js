@@ -92,6 +92,7 @@ import ValidacionProfesionalController from './controllers/ValidacionProfesional
 import RefepsSearchController from './controllers/RefepsSearchController.js';
 import VinculoProfesionalPertenecienteController from './controllers/VinculoProfesionalPertenecienteController.js';
 import VinculoTutorPertenecienteController from './controllers/VinculoTutorPertenecienteController.js';
+import AcompanamientoController from './controllers/AcompanamientoController.js';
 import { authMiddleware, verifiedAccountMiddleware } from './middlewares/auth.middleware.js';
 import { csrfMiddleware } from './middlewares/csrf.middleware.js';
 import { errorMiddleware } from './middlewares/error.middleware.js';
@@ -196,6 +197,7 @@ app.use('/api/eventos-zonas-seguras', EventoZonaSeguraController);
 app.use('/api/compras-puntos', CompraPuntoController);
 app.use('/api/sesiones-profesionales', SesionProfesionalController);
 app.use('/api/reportes-profesionales', ReporteProfesionalController);
+app.use('/api/acompanamiento', AcompanamientoController);
 app.use('/api/note-template-favorites', NoteTemplateFavoriteController);
 app.use('/api/dispositivos', DispositivoController);
 app.use('/api/ubicaciones-actuales', UbicacionActualController);

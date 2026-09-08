@@ -66,6 +66,7 @@
     "db:fix-mensajes-timezone": "node scripts/fix-mensajes-timezone.mjs",
     "db:fix-notificaciones-timezone": "node scripts/fix-notificaciones-timezone.mjs",
     "db:reportes-profesionales": "node scripts/create-reportes-profesionales-table.mjs",
+    "db:acompanamiento": "node scripts/create-acompanamiento-tables.mjs",
     "db:tareas-reportes-programados": "node scripts/create-tareas-reportes-programados-table.mjs",
     "db:email-tokens": "node scripts/create-email-verification-tokens-table.mjs",
     "db:password-reset-tokens": "node scripts/create-password-reset-tokens-table.mjs",
